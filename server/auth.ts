@@ -12,10 +12,23 @@ export interface AuthRequest extends Request {
     name: string;
     email: string;
     role: string;
+    category?: string;
+    department?: string;
+    phone?: string;
+    status?: string;
+    avatar_url?: string;
   };
 }
 
-export function generateToken(user: { id: number; username: string; name: string; email: string; role: string }) {
+export function generateToken(user: { 
+  id: number; 
+  username: string; 
+  name: string; 
+  email: string; 
+  role: string;
+  category?: string;
+  department?: string;
+}) {
   return jwt.sign(
     {
       id: user.id,
@@ -23,6 +36,8 @@ export function generateToken(user: { id: number; username: string; name: string
       name: user.name,
       email: user.email,
       role: user.role,
+      category: user.category,
+      department: user.department,
     },
     JWT_SECRET,
     { expiresIn: '7d' }
@@ -51,19 +66,20 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
       name: string;
       email: string;
       role: string;
+      category?: string;
+      department?: string;
     };
 
-    // Verify user still exists in db
-    const user = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(decoded.id) as {
-      id: number;
-      username: string;
-      name: string;
-      email: string;
-      role: string;
-    } | undefined;
+    // Verify user still exists in db and check status
+    const user = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, avatar_url FROM users WHERE id = ?').get(decoded.id) as any;
 
     if (!user) {
       res.status(401).json({ error: 'Utilizador não encontrado ou sessão expirada.' });
+      return;
+    }
+
+    if (user.status && user.status === 'Inativo') {
+      res.status(403).json({ error: 'Esta conta de utilizador foi desactivada. Contacte o administrador.' });
       return;
     }
 

@@ -12,7 +12,8 @@ import {
   Settings, 
   Sparkles,
   FileText,
-  Database
+  Database,
+  Users
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -121,6 +122,12 @@ export default function AdminDashboard({ setActiveTab }: AdminDashboardProps) {
               className="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 backdrop-blur-sm"
             >
               <Settings size={14} /> Definições do Portal
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className="bg-white/15 hover:bg-white/25 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 backdrop-blur-sm"
+            >
+              <Users size={14} /> Utilizadores & Categorias
             </button>
             <button
               onClick={() => setActiveTab('database')}

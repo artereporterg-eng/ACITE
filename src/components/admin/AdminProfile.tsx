@@ -9,6 +9,8 @@ export default function AdminProfile() {
   const [name, setName] = useState(user?.name || 'Administrador Geral');
   const [username, setUsername] = useState(user?.username || 'admin');
   const [email, setEmail] = useState(user?.email || 'admin@acite.ao');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [department, setDepartment] = useState(user?.department || 'Direcção Geral');
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -39,6 +41,8 @@ export default function AdminProfile() {
         name: name.trim(),
         username: username.trim(),
         email: email.trim(),
+        phone: phone.trim(),
+        department: department.trim(),
       };
 
       if (newPassword) {
@@ -138,7 +142,7 @@ export default function AdminProfile() {
               <p className="text-[11px] text-gray-500 mt-1">Este é o nome utilizado para aceder ao backend.</p>
             </div>
 
-            <div className="md:col-span-2">
+            <div>
               <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
                 Endereço de E-mail
               </label>
@@ -149,6 +153,44 @@ export default function AdminProfile() {
                 className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-acite-blue focus:border-transparent outline-none transition-all"
                 placeholder="admin@acite.ao"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                Telefone / WhatsApp
+              </label>
+              <input
+                type="text"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-acite-blue focus:border-transparent outline-none transition-all"
+                placeholder="+244 923 000 000"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                Departamento / Gabinete
+              </label>
+              <input
+                type="text"
+                value={department}
+                onChange={(e) => setDepartment(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-gray-50 border border-gray-300 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-acite-blue focus:border-transparent outline-none transition-all"
+                placeholder="Direcção Geral"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+                Categoria & Função Atribuída
+              </label>
+              <div className="px-3.5 py-2.5 bg-purple-50 border border-purple-200 rounded-lg text-xs font-bold text-purple-900 flex items-center justify-between">
+                <span>{user?.category || 'Super Administrador'}</span>
+                <span className="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full font-mono">
+                  {user?.role || 'admin'}
+                </span>
+              </div>
             </div>
           </div>
         </div>

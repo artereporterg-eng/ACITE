@@ -6,10 +6,12 @@ import {
   PublicationItem, 
   HeroSlide, 
   FeatureItem, 
-  SiteSettings,
-  ApplicationItem,
-  InstitutionalPage,
-  User 
+  SiteSettings, 
+  ApplicationItem, 
+  InstitutionalPage, 
+  User,
+  UserCategory,
+  UserListResponse
 } from '../types';
 
 const API_BASE = '';
@@ -420,4 +422,88 @@ export function getDatabaseBackupUrl(): string {
   const token = localStorage.getItem('acite_token');
   return `${API_BASE}/api/admin/database/backup${token ? `?token=${token}` : ''}`;
 }
+
+// 5. USER & CATEGORY MANAGEMENT
+export async function fetchUsers(params?: { category?: string; status?: string; search?: string }): Promise<UserListResponse> {
+  const query = new URLSearchParams();
+  if (params?.category) query.append('category', params.category);
+  if (params?.status) query.append('status', params.status);
+  if (params?.search) query.append('search', params.search);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/admin/users${qs}`, {
+    headers: { ...getAuthHeader() },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao carregar lista de utilizadores');
+  return json;
+}
+
+export async function fetchUserCategories(): Promise<{ categories: UserCategory[] }> {
+  const res = await fetch(`${API_BASE}/api/admin/users/categories`, {
+    headers: { ...getAuthHeader() },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao carregar categorias de utilizadores');
+  return json;
+}
+
+export async function createUser(userData: {
+  username: string;
+  password?: string;
+  name: string;
+  email?: string;
+  role?: string;
+  category: string;
+  department?: string;
+  phone?: string;
+  status?: string;
+}): Promise<{ success: boolean; message: string; user: User; id: number }> {
+  const res = await fetch(`${API_BASE}/api/admin/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(userData),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao criar utilizador');
+  return json;
+}
+
+export async function updateUser(id: number, userData: Partial<User> & { new_password?: string }): Promise<{ success: boolean; message: string; user: User }> {
+  const res = await fetch(`${API_BASE}/api/admin/users/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(userData),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao actualizar utilizador');
+  return json;
+}
+
+export async function toggleUserStatus(id: number): Promise<{ success: boolean; status: 'Ativo' | 'Inativo'; message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/users/${id}/toggle-status`, {
+    method: 'PATCH',
+    headers: { ...getAuthHeader() },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao alterar estado do utilizador');
+  return json;
+}
+
+export async function deleteUser(id: number): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API_BASE}/api/admin/users/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao eliminar utilizador');
+  return json;
+}
+
 

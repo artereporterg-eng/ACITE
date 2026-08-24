@@ -36,8 +36,60 @@ const upload = multer({
 });
 
 // ==========================================
-// 1. AUTHENTICATION ROUTES
+// 1. AUTHENTICATION & MULTI-USER MANAGEMENT
 // ==========================================
+
+// Predefined user categories and their standard departments
+export const USER_CATEGORIES = [
+  {
+    id: 'superadmin',
+    name: 'Super Administrador',
+    role: 'superadmin',
+    defaultDepartment: 'Direcção Geral & Reitoria',
+    description: 'Acesso irrestrito a todos os módulos, utilizadores, base de dados e definições.',
+    badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
+  },
+  {
+    id: 'academico',
+    name: 'Direcção Académica & Cursos',
+    role: 'academico',
+    defaultDepartment: 'Gabinete de Pós-Graduação e Ensino',
+    description: 'Gestão de programas de pós-graduação, mestrados, doutoramentos e planos curriculares.',
+    badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+  },
+  {
+    id: 'comunicacao',
+    name: 'Comunicação & Imprensa',
+    role: 'comunicacao',
+    defaultDepartment: 'Gabinete de Relações Públicas e Imprensa',
+    description: 'Publicação de notícias, comunicados institucionais, eventos e banners da página inicial.',
+    badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  },
+  {
+    id: 'admissoes',
+    name: 'Secretaria & Admissões',
+    role: 'admissoes',
+    defaultDepartment: 'Secretaria Académica e Admissões',
+    description: 'Triagem, validação e gestão do estado de candidaturas e mensagens de contacto.',
+    badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+  },
+  {
+    id: 'investigacao',
+    name: 'Docência & Investigação',
+    role: 'investigacao',
+    defaultDepartment: 'Conselho Científico e Centro de Estudos',
+    description: 'Gestão de publicações científicas, obras publicadas, livros e artigos académicos.',
+    badgeColor: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+  },
+  {
+    id: 'suporte',
+    name: 'Técnico de Suporte & TI',
+    role: 'suporte',
+    defaultDepartment: 'Gabinete de Tecnologias de Informação',
+    description: 'Manutenção do sistema, biblioteca de mídia, diagnósticos e base de dados.',
+    badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+  },
+];
 
 // Login
 router.post('/api/auth/login', (req: Request, res: Response) => {
@@ -56,18 +108,32 @@ router.post('/api/auth/login', (req: Request, res: Response) => {
       return;
     }
 
+    if (user.status && user.status === 'Inativo') {
+      res.status(403).json({ error: 'Esta conta de utilizador encontra-se desactivada. Contacte a Direcção Geral.' });
+      return;
+    }
+
     const isMatch = comparePassword(password, user.password_hash);
     if (!isMatch) {
       res.status(401).json({ error: 'Credenciais incorrectas. Verifique a palavra-passe.' });
       return;
     }
 
+    // Update last login timestamp
+    try {
+      db.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+    } catch {
+      // ignore if column not yet queried
+    }
+
     const token = generateToken({
       id: user.id,
       username: user.username,
       name: user.name,
-      email: user.email,
-      role: user.role,
+      email: user.email || '',
+      role: user.role || 'admin',
+      category: user.category || 'Super Administrador',
+      department: user.department || 'Direcção Geral',
     });
 
     res.cookie('acite_token', token, {
@@ -85,7 +151,12 @@ router.post('/api/auth/login', (req: Request, res: Response) => {
         username: user.username,
         name: user.name,
         email: user.email,
-        role: user.role,
+        role: user.role || 'admin',
+        category: user.category || 'Super Administrador',
+        department: user.department || 'Direcção Geral',
+        phone: user.phone || '',
+        status: user.status || 'Ativo',
+        avatar_url: user.avatar_url || '',
       },
     });
   } catch (error: any) {
@@ -108,7 +179,7 @@ router.post('/api/auth/logout', (req: Request, res: Response) => {
 router.put('/api/auth/profile', authMiddleware, (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { name, email, username, current_password, new_password } = req.body;
+    const { name, email, username, phone, department, current_password, new_password } = req.body;
 
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
     if (!user) {
@@ -149,15 +220,24 @@ router.put('/api/auth/profile', authMiddleware, (req: AuthRequest, res: Response
       SET name = COALESCE(?, name),
           email = COALESCE(?, email),
           username = COALESCE(?, username),
+          phone = COALESCE(?, phone),
+          department = COALESCE(?, department),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
-    `).run(name || user.name, email || user.email, username || user.username, userId);
+    `).run(
+      name || user.name, 
+      email || user.email, 
+      username || user.username,
+      phone !== undefined ? phone : user.phone,
+      department !== undefined ? department : user.department,
+      userId
+    );
 
-    const updatedUser = db.prepare('SELECT id, username, name, email, role FROM users WHERE id = ?').get(userId);
+    const updatedUser = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, avatar_url FROM users WHERE id = ?').get(userId);
 
     res.json({
       success: true,
-      message: 'Perfil e credenciais actualizados com sucesso!',
+      message: 'Perfil e dados actualizados com sucesso!',
       user: updatedUser,
     });
   } catch (error: any) {
@@ -165,46 +245,313 @@ router.put('/api/auth/profile', authMiddleware, (req: AuthRequest, res: Response
   }
 });
 
-// Manage Admin Users (Create additional staff)
-router.get('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response) => {
-  const users = db.prepare('SELECT id, username, name, email, role, created_at FROM users ORDER BY id ASC').all();
-  res.json(users);
+// Categories metadata endpoint
+router.get('/api/admin/users/categories', authMiddleware, (req: AuthRequest, res: Response) => {
+  res.json({ categories: USER_CATEGORIES });
 });
 
+// Get all users with filters and category breakdown
+router.get('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const { category, search, status } = req.query;
+
+    let query = 'SELECT id, username, name, email, role, category, department, phone, status, avatar_url, last_login_at, created_at, updated_at FROM users WHERE 1=1';
+    const params: any[] = [];
+
+    if (category && category !== 'Todos') {
+      query += ' AND category = ?';
+      params.push(category);
+    }
+
+    if (status && status !== 'Todos') {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+
+    if (search && typeof search === 'string' && search.trim()) {
+      const term = `%${search.trim()}%`;
+      query += ' AND (name LIKE ? OR username LIKE ? OR email LIKE ? OR department LIKE ?)';
+      params.push(term, term, term, term);
+    }
+
+    query += ' ORDER BY id ASC';
+
+    const users = db.prepare(query).all(...params) as any[];
+
+    // Calculate category breakdown stats
+    const allUsers = db.prepare('SELECT category, status FROM users').all() as any[];
+    const categoryStats: Record<string, number> = {
+      total: allUsers.length,
+      active: allUsers.filter(u => (u.status || 'Ativo') === 'Ativo').length,
+      inactive: allUsers.filter(u => u.status === 'Inativo').length,
+    };
+
+    USER_CATEGORIES.forEach(cat => {
+      categoryStats[cat.name] = allUsers.filter(u => (u.category || 'Super Administrador') === cat.name).length;
+    });
+
+    res.json({
+      users: users.map(u => ({
+        ...u,
+        category: u.category || 'Super Administrador',
+        department: u.department || 'Direcção Geral',
+        status: u.status || 'Ativo',
+      })),
+      categoryStats,
+      categories: USER_CATEGORIES,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao listar utilizadores.' });
+  }
+});
+
+// Create a new user with Category & Department
 router.post('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response) => {
   try {
-    const { username, password, name, email, role } = req.body;
+    const { username, password, name, email, role, category, department, phone, status } = req.body;
+
     if (!username || !password || !name) {
-      res.status(400).json({ error: 'Nome, utilizador e senha são obrigatórios.' });
+      res.status(400).json({ error: 'Nome completo, nome de utilizador e palavra-passe são obrigatórios.' });
       return;
     }
 
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-    if (existing) {
-      res.status(400).json({ error: 'Nome de utilizador já existente.' });
+    if (password.length < 4) {
+      res.status(400).json({ error: 'A palavra-passe deve ter pelo menos 4 caracteres.' });
       return;
     }
+
+    const cleanUsername = username.trim().toLowerCase();
+    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(cleanUsername);
+    if (existing) {
+      res.status(400).json({ error: 'O nome de utilizador já está em uso.' });
+      return;
+    }
+
+    if (email) {
+      const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim());
+      if (existingEmail) {
+        res.status(400).json({ error: 'O endereço de e-mail já está associado a outra conta.' });
+        return;
+      }
+    }
+
+    // Determine category and default role
+    const matchedCategory = USER_CATEGORIES.find(c => c.name === category || c.id === role);
+    const finalCategory = category || matchedCategory?.name || 'Super Administrador';
+    const finalRole = role || matchedCategory?.role || 'admin';
+    const finalDepartment = department || matchedCategory?.defaultDepartment || 'Direcção Geral';
+    const finalStatus = status || 'Ativo';
 
     const hash = hashPassword(password);
     const result = db.prepare(`
-      INSERT INTO users (username, password_hash, name, email, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(username, hash, name, email || '', role || 'admin');
+      INSERT INTO users (username, password_hash, name, email, role, category, department, phone, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      cleanUsername, 
+      hash, 
+      name.trim(), 
+      email ? email.trim() : '', 
+      finalRole, 
+      finalCategory, 
+      finalDepartment, 
+      phone ? phone.trim() : '', 
+      finalStatus
+    );
 
-    res.json({ success: true, id: result.lastInsertRowid, message: 'Utilizador criado com sucesso!' });
+    // Audit log
+    try {
+      db.prepare(`
+        INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
+        VALUES (?, ?, 'CREATE', 'users', ?, ?)
+      `).run(
+        req.user?.id || null,
+        req.user?.username || 'admin',
+        result.lastInsertRowid.toString(),
+        `Novo utilizador criado: ${name} (${cleanUsername}) na categoria ${finalCategory}`
+      );
+    } catch {
+      // ignore
+    }
+
+    const newUser = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+
+    res.status(201).json({ 
+      success: true, 
+      id: result.lastInsertRowid, 
+      message: `Utilizador ${name} adicionado com sucesso na categoria "${finalCategory}"!`,
+      user: newUser
+    });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message || 'Erro ao criar utilizador.' });
   }
 });
 
-router.delete('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const targetId = parseInt(req.params.id, 10);
-  if (targetId === req.user!.id) {
-    res.status(400).json({ error: 'Não pode eliminar a sua própria conta em sessão.' });
-    return;
+// Update user details, category, department, status or password
+router.put('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const { name, email, role, category, department, phone, status, new_password } = req.body;
+
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId) as any;
+    if (!user) {
+      res.status(404).json({ error: 'Utilizador não encontrado.' });
+      return;
+    }
+
+    // Protect primary admin from being deactivated or de-elevated
+    if (user.username === 'admin' && status === 'Inativo') {
+      res.status(400).json({ error: 'Não é permitido desactivar a conta principal de administração (admin).' });
+      return;
+    }
+
+    if (new_password) {
+      if (new_password.length < 4) {
+        res.status(400).json({ error: 'A nova palavra-passe deve ter pelo menos 4 caracteres.' });
+        return;
+      }
+      const newHash = hashPassword(new_password);
+      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, targetId);
+    }
+
+    if (email && email !== user.email) {
+      const existingEmail = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, targetId);
+      if (existingEmail) {
+        res.status(400).json({ error: 'O endereço de e-mail já está associado a outra conta.' });
+        return;
+      }
+    }
+
+    const matchedCategory = USER_CATEGORIES.find(c => c.name === category || c.id === role);
+    const finalCategory = category !== undefined ? category : (user.category || 'Super Administrador');
+    const finalRole = role !== undefined ? role : (matchedCategory?.role || user.role || 'admin');
+    const finalDepartment = department !== undefined ? department : (user.department || 'Direcção Geral');
+    const finalStatus = status !== undefined ? status : (user.status || 'Ativo');
+
+    db.prepare(`
+      UPDATE users 
+      SET name = COALESCE(?, name),
+          email = COALESCE(?, email),
+          role = ?,
+          category = ?,
+          department = ?,
+          phone = COALESCE(?, phone),
+          status = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(
+      name || user.name,
+      email !== undefined ? email : user.email,
+      finalRole,
+      finalCategory,
+      finalDepartment,
+      phone !== undefined ? phone : user.phone,
+      finalStatus,
+      targetId
+    );
+
+    const updated = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, updated_at FROM users WHERE id = ?').get(targetId);
+
+    // Audit log
+    try {
+      db.prepare(`
+        INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
+        VALUES (?, ?, 'UPDATE', 'users', ?, ?)
+      `).run(
+        req.user?.id || null,
+        req.user?.username || 'admin',
+        targetId.toString(),
+        `Utilizador actualizado: ${user.username} (Categoria: ${finalCategory}, Estado: ${finalStatus})`
+      );
+    } catch {
+      // ignore
+    }
+
+    res.json({
+      success: true,
+      message: 'Utilizador actualizado com sucesso!',
+      user: updated,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao actualizar utilizador.' });
   }
-  db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
-  res.json({ success: true, message: 'Utilizador removido com sucesso.' });
+});
+
+// Quick toggle active / inactive status
+router.patch('/api/admin/users/:id/toggle-status', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const user = db.prepare('SELECT id, username, status FROM users WHERE id = ?').get(targetId) as any;
+    
+    if (!user) {
+      res.status(404).json({ error: 'Utilizador não encontrado.' });
+      return;
+    }
+
+    if (user.username === 'admin') {
+      res.status(400).json({ error: 'A conta principal de administrador não pode ser desactivada.' });
+      return;
+    }
+
+    if (user.id === req.user!.id) {
+      res.status(400).json({ error: 'Não pode desactivar a sua própria conta actualmente em sessão.' });
+      return;
+    }
+
+    const nextStatus = user.status === 'Inativo' ? 'Ativo' : 'Inativo';
+    db.prepare('UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(nextStatus, targetId);
+
+    res.json({
+      success: true,
+      status: nextStatus,
+      message: `Conta de utilizador "${user.username}" alterada para ${nextStatus}.`
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao alterar estado do utilizador.' });
+  }
+});
+
+// Delete user
+router.delete('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const targetId = parseInt(req.params.id, 10);
+    const user = db.prepare('SELECT id, username, name FROM users WHERE id = ?').get(targetId) as any;
+
+    if (!user) {
+      res.status(404).json({ error: 'Utilizador não encontrado.' });
+      return;
+    }
+
+    if (user.username === 'admin' || targetId === 1) {
+      res.status(400).json({ error: 'A conta principal de administração (admin) é protegida e não pode ser eliminada.' });
+      return;
+    }
+
+    if (targetId === req.user!.id) {
+      res.status(400).json({ error: 'Não pode eliminar a sua própria conta em sessão.' });
+      return;
+    }
+
+    db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
+
+    // Audit log
+    try {
+      db.prepare(`
+        INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
+        VALUES (?, ?, 'DELETE', 'users', ?, ?)
+      `).run(
+        req.user?.id || null,
+        req.user?.username || 'admin',
+        targetId.toString(),
+        `Utilizador eliminado: ${user.name} (${user.username})`
+      );
+    } catch {
+      // ignore
+    }
+
+    res.json({ success: true, message: `Utilizador "${user.name}" eliminado com sucesso.` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao eliminar utilizador.' });
+  }
 });
 
 // ==========================================

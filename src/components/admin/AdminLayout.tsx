@@ -19,6 +19,7 @@ import AdminApplications from './AdminApplications';
 import AdminSettings from './AdminSettings';
 import AdminProfile from './AdminProfile';
 import AdminDatabase from './AdminDatabase';
+import AdminUsers from './AdminUsers';
 import { 
   LayoutDashboard, 
   GraduationCap, 
@@ -38,7 +39,8 @@ import {
   X,
   ExternalLink,
   ShieldCheck,
-  Database
+  Database,
+  Users
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -85,6 +87,7 @@ export default function AdminLayout({ onCloseAdmin }: AdminLayoutProps) {
     { id: 'pages', label: 'Páginas Institucionais', icon: FileText },
     { id: 'media', label: 'Biblioteca de Ficheiros', icon: Image },
     { id: 'database', label: 'Base de Dados & Sistema', icon: Database },
+    { id: 'users', label: 'Utilizadores & Categorias', icon: Users },
     { id: 'settings', label: 'Definições do Portal', icon: Settings },
     { id: 'profile', label: 'Conta & Alterar Senha', icon: UserCheck },
   ];
@@ -118,10 +121,15 @@ export default function AdminLayout({ onCloseAdmin }: AdminLayoutProps) {
           </button>
         </div>
 
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex items-center gap-3 text-xs">
           <div className="hidden sm:flex items-center gap-2 text-gray-300">
             <ShieldCheck size={16} className="text-acite-gold" />
             <span>Olá, <strong className="text-white">{user?.name || user?.username || 'Administrador'}</strong></span>
+            {user?.category && (
+              <span className="bg-acite-gold/20 text-acite-gold text-[10px] font-bold px-2 py-0.5 rounded-full border border-acite-gold/30">
+                {user.category}
+              </span>
+            )}
           </div>
 
           <button
@@ -182,7 +190,7 @@ export default function AdminLayout({ onCloseAdmin }: AdminLayoutProps) {
           </div>
 
           <div className="p-3 border-t border-gray-800 bg-[#171717] text-[11px] text-gray-400 flex items-center justify-between">
-            <span>Versão 2.4.0 (CMS)</span>
+            <span>Versão 2.5.0 (Multi-User)</span>
             <span className="text-acite-gold font-semibold">ACITE Core</span>
           </div>
         </aside>
@@ -232,6 +240,7 @@ export default function AdminLayout({ onCloseAdmin }: AdminLayoutProps) {
               )}
               {activeTab === 'media' && <AdminMedia />}
               {activeTab === 'database' && <AdminDatabase />}
+              {activeTab === 'users' && <AdminUsers />}
               {activeTab === 'settings' && (
                 <AdminSettings initialSettings={data?.settings || {}} onSettingsUpdated={loadAllData} />
               )}

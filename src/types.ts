@@ -4,7 +4,29 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  category: string;
+  department?: string;
+  phone?: string;
+  status: 'Ativo' | 'Inativo';
+  avatar_url?: string;
+  last_login_at?: string;
   created_at?: string;
+  updated_at?: string;
+}
+
+export interface UserCategory {
+  id: string;
+  name: string;
+  role: string;
+  defaultDepartment: string;
+  description: string;
+  badgeColor: string;
+}
+
+export interface UserListResponse {
+  users: User[];
+  categoryStats: Record<string, number>;
+  categories: UserCategory[];
 }
 
 export interface SiteSettings {

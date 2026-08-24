@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import bcrypt from 'bcryptjs';
 
 export interface Migration {
   version: number;
@@ -335,6 +336,95 @@ export const migrationsRegistry: Migration[] = [
           subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
       `);
+    },
+  },
+  {
+    version: 5,
+    name: '005_user_categories_and_multi_account_system',
+    description: 'Expansão do sistema multi-utilizador: adiciona categorias de utilizadores, departamento, telefone, estado e contas departamentais',
+    up: (db) => {
+      addColumnIfNotExists(db, 'users', 'category TEXT DEFAULT "Super Administrador"');
+      addColumnIfNotExists(db, 'users', 'department TEXT DEFAULT "Direcção Geral"');
+      addColumnIfNotExists(db, 'users', 'phone TEXT');
+      addColumnIfNotExists(db, 'users', 'status TEXT DEFAULT "Ativo"');
+      addColumnIfNotExists(db, 'users', 'avatar_url TEXT');
+      addColumnIfNotExists(db, 'users', 'last_login_at DATETIME');
+
+      // Update default admin to Super Administrador
+      db.prepare(`
+        UPDATE users 
+        SET category = 'Super Administrador', 
+            department = 'Direcção Geral & Reitoria',
+            role = 'superadmin',
+            status = 'Ativo'
+        WHERE username = 'admin'
+      `).run();
+
+      // Seed initial representative department users if only 1 user exists
+      const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
+      if (userCount.count <= 1) {
+        // Hash for password 'acite2026'
+        // Pre-computed or generated safely
+        const salt = bcrypt.genSaltSync(10);
+        const defaultHash = bcrypt.hashSync('acite2026', salt);
+
+        const insertUser = db.prepare(`
+          INSERT OR IGNORE INTO users (username, password_hash, name, email, role, category, department, phone, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        // 1. Direcção Académica
+        insertUser.run(
+          'academico',
+          defaultHash,
+          'Dra. Maria Eunice Santos',
+          'academico@acite.ao',
+          'academico',
+          'Direcção Académica & Cursos',
+          'Gabinete de Pós-Graduação e Ensino',
+          '+244 923 112 233',
+          'Ativo'
+        );
+
+        // 2. Comunicação e Imprensa
+        insertUser.run(
+          'comunicacao',
+          defaultHash,
+          'Lic. Manuel Domingos',
+          'comunicacao@acite.ao',
+          'comunicacao',
+          'Comunicação & Imprensa',
+          'Gabinete de Relações Públicas e Imprensa',
+          '+244 934 445 566',
+          'Ativo'
+        );
+
+        // 3. Secretaria e Admissões
+        insertUser.run(
+          'secretaria',
+          defaultHash,
+          'Dra. Ana Paula Carvalho',
+          'secretaria@acite.ao',
+          'admissoes',
+          'Secretaria & Admissões',
+          'Departamento de Gestão Académica e Admissões',
+          '+244 912 778 899',
+          'Ativo'
+        );
+
+        // 4. Investigação Científica
+        insertUser.run(
+          'investigador',
+          defaultHash,
+          'Prof. Doutor António Bunga',
+          'investigacao@acite.ao',
+          'investigacao',
+          'Docência & Investigação',
+          'Conselho Científico e Centro de Estudos',
+          '+244 945 001 122',
+          'Ativo'
+        );
+      }
     },
   }
 ];
