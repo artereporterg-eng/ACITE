@@ -22,9 +22,12 @@ async function startServer() {
   app.use(express.json({ limit: '20mb' }));
   app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-  // Static uploads directory
+  // Static uploads and multimedia directories
   const uploadsPath = path.join(process.cwd(), 'uploads');
   app.use('/uploads', express.static(uploadsPath));
+
+  const multimediaPath = path.join(process.cwd(), 'public', 'multimedia');
+  app.use('/multimedia', express.static(multimediaPath));
 
   // Mount API router
   app.use(apiRouter);

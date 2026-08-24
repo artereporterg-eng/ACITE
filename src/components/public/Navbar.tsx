@@ -137,9 +137,25 @@ export default function Navbar({
         <nav className="max-w-7xl mx-auto px-4 py-3.5 flex justify-between items-center">
           {/* Logo & Identity */}
           <a href="#" className="flex items-center gap-3 group">
-            <div className="w-11 h-11 bg-acite-blue text-acite-gold font-bold text-2xl rounded-lg flex items-center justify-center shadow-md group-hover:scale-105 transition-transform">
-              A
-            </div>
+            {settings.logo_url ? (
+              <img
+                src={settings.logo_url}
+                alt={settings.site_name || 'ACITE'}
+                className="h-11 w-auto object-contain rounded"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <img
+                src="/multimedia/acite-logo.svg"
+                alt="ACITE"
+                className="w-11 h-11 object-contain rounded-lg shadow-sm group-hover:scale-105 transition-transform"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = '/multimedia/default-academic.svg';
+                }}
+              />
+            )}
             <div>
               <h1 className="text-acite-blue font-extrabold text-xl leading-none tracking-tight">
                 {settings.site_name || 'ACITE'}

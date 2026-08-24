@@ -62,8 +62,11 @@ export default function PublicationsSection({ publications }: PublicationsSectio
                 className="w-28 h-40 bg-gray-100 rounded-xl overflow-hidden shadow-md shrink-0 cursor-pointer group-hover:scale-105 transition-transform duration-300"
               >
                 <img
-                  src={pub.cover_url || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=600'}
+                  src={pub.cover_url || '/multimedia/book-manual.svg'}
                   alt={pub.title}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/multimedia/book-manual.svg';
+                  }}
                   className="w-full h-full object-cover"
                   referrerPolicy="no-referrer"
                 />

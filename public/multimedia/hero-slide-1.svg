@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#001830" />
+      <stop offset="50%" stop-color="#002244" />
+      <stop offset="100%" stop-color="#000e1f" />
+    </linearGradient>
+    <linearGradient id="goldAcc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5d77f" />
+      <stop offset="100%" stop-color="#c5a059" />
+    </linearGradient>
+    <radialGradient id="glow" cx="80%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#c5a059" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#002244" stop-opacity="0" />
+    </radialGradient>
+    <pattern id="grid" width="80" height="80" patternUnits="userSpaceOnUse">
+      <path d="M 80 0 L 0 0 0 80" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+    </pattern>
+  </defs>
+
+  <!-- Background base -->
+  <rect width="1920" height="1080" fill="url(#bgGrad1)"/>
+  <rect width="1920" height="1080" fill="url(#glow)"/>
+  <rect width="1920" height="1080" fill="url(#grid)"/>
+
+  <!-- Geometric Abstract Architectural Lines -->
+  <g opacity="0.35">
+    <path d="M 900 0 L 1920 1080 L 1920 0 Z" fill="#003366" opacity="0.4"/>
+    <path d="M 1200 0 L 1920 720 L 1920 0 Z" fill="#004080" opacity="0.3"/>
+    <line x1="850" y1="0" x2="1920" y2="1070" stroke="url(#goldAcc)" stroke-width="2" opacity="0.6"/>
+    <line x1="1150" y1="0" x2="1920" y2="770" stroke="url(#goldAcc)" stroke-width="1.5" opacity="0.4"/>
+    <circle cx="1500" cy="400" r="350" fill="none" stroke="#ffffff" stroke-width="1" stroke-opacity="0.08"/>
+    <circle cx="1500" cy="400" r="220" fill="none" stroke="url(#goldAcc)" stroke-width="1" stroke-opacity="0.2" stroke-dasharray="8 8"/>
+  </g>
+
+  <!-- Academic Building Illustration on right -->
+  <g transform="translate(1150, 260)" opacity="0.85">
+    <!-- Pediment -->
+    <polygon points="350,120 150,220 550,220" fill="#001830" stroke="url(#goldAcc)" stroke-width="3"/>
+    <!-- Columns -->
+    <rect x="170" y="230" width="40" height="300" rx="4" fill="#002855" stroke="url(#goldAcc)" stroke-width="1.5"/>
+    <rect x="250" y="230" width="40" height="300" rx="4" fill="#002855" stroke="url(#goldAcc)" stroke-width="1.5"/>
+    <rect x="330" y="230" width="40" height="300" rx="4" fill="#002855" stroke="url(#goldAcc)" stroke-width="1.5"/>
+    <rect x="410" y="230" width="40" height="300" rx="4" fill="#002855" stroke="url(#goldAcc)" stroke-width="1.5"/>
+    <rect x="490" y="230" width="40" height="300" rx="4" fill="#002855" stroke="url(#goldAcc)" stroke-width="1.5"/>
+    <!-- Base -->
+    <rect x="130" y="530" width="440" height="40" rx="4" fill="#001830" stroke="url(#goldAcc)" stroke-width="2"/>
+    <!-- Central Shield Inside Pediment -->
+    <circle cx="350" cy="180" r="22" fill="#002244" stroke="url(#goldAcc)" stroke-width="2"/>
+    <text x="350" y="187" font-family="system-ui" font-size="20" font-weight="bold" fill="#c5a059" text-anchor="middle">A</text>
+  </g>
+
+  <!-- Badge and Decorative Highlights -->
+  <g transform="translate(180, 220)">
+    <rect x="0" y="0" width="340" height="42" rx="6" fill="#c5a059" fill-opacity="0.15" stroke="url(#goldAcc)" stroke-width="1.5"/>
+    <circle cx="24" cy="21" r="6" fill="#c5a059"/>
+    <text x="42" y="27" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#f5d77f" letter-spacing="2">CAMPUS &amp; ALTOS ESTUDOS</text>
+  </g>
+
+  <!-- Giant Watermark in background -->
+  <text x="180" y="720" font-family="system-ui, sans-serif" font-size="120" font-weight="900" fill="#ffffff" fill-opacity="0.03" letter-spacing="10">ACITE ANGOLA</text>
+</svg>

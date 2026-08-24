@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { db } from './db.js';
+import { db, dbPath, runAutoMigrations, getDatabaseDiagnostics, executeCustomSchemaUpdate } from './db.js';
 import { authMiddleware, AuthRequest, generateToken, hashPassword, comparePassword } from './auth.js';
 
 const router = Router();
@@ -652,4 +652,99 @@ router.delete('/api/admin/media/:id', authMiddleware, (req: AuthRequest, res: Re
   res.json({ success: true, message: 'Ficheiro eliminado!' });
 });
 
+// ==========================================
+// 12. DATABASE AUTO-UPDATE & SYSTEM DIAGNOSTICS
+// ==========================================
+
+// Get database status, migrations history, tables stats, and integrity
+router.get('/api/admin/database/status', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const diagnostics = getDatabaseDiagnostics(db, dbPath);
+    res.json(diagnostics);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao obter diagnóstico da base de dados.' });
+  }
+});
+
+// Trigger database auto-update / run pending migrations
+router.post('/api/admin/database/migrate', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const result = runAutoMigrations(db);
+    const diagnostics = getDatabaseDiagnostics(db, dbPath);
+    res.json({
+      success: true,
+      message: result.executed > 0
+        ? `Base de dados actualizada com sucesso! ${result.executed} migrações aplicadas (Versão v${result.currentVersion}).`
+        : `A base de dados já se encontra actualizada na versão mais recente (v${result.currentVersion}).`,
+      result,
+      diagnostics,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao executar migrações na base de dados.' });
+  }
+});
+
+// Optimize database (VACUUM and PRAGMA optimize)
+router.post('/api/admin/database/optimize', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    db.exec('VACUUM;');
+    db.pragma('optimize');
+    const diagnostics = getDatabaseDiagnostics(db, dbPath);
+    res.json({
+      success: true,
+      message: 'Base de dados optimizada com sucesso (VACUUM e checkpoint executados).',
+      diagnostics,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao optimizar base de dados.' });
+  }
+});
+
+// Download database backup file (.db)
+router.get('/api/admin/database/backup', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    // Flush WAL to disk first
+    db.pragma('wal_checkpoint(FULL)');
+    
+    if (!fs.existsSync(dbPath)) {
+      res.status(404).json({ error: 'Ficheiro da base de dados não encontrado.' });
+      return;
+    }
+
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const backupFileName = `acite_database_backup_${dateStr}.db`;
+    
+    res.setHeader('Content-Disposition', `attachment; filename="${backupFileName}"`);
+    res.setHeader('Content-Type', 'application/x-sqlite3');
+    
+    const fileStream = fs.createReadStream(dbPath);
+    fileStream.pipe(res);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || 'Erro ao descarregar cópia de segurança.' });
+  }
+});
+
+// Execute custom schema adjustment / new feature table safely
+router.post('/api/admin/database/custom-schema', authMiddleware, (req: AuthRequest, res: Response) => {
+  try {
+    const { sql } = req.body;
+    if (!sql || typeof sql !== 'string') {
+      res.status(400).json({ error: 'Instrução SQL obrigatória.' });
+      return;
+    }
+
+    const result = executeCustomSchemaUpdate(db, sql);
+    const diagnostics = getDatabaseDiagnostics(db, dbPath);
+    res.json({
+      success: true,
+      message: result.message,
+      diagnostics,
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || 'Erro de sintaxe ou execução SQL.' });
+  }
+});
+
 export default router;
+

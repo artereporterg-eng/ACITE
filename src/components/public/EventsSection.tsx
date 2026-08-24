@@ -41,8 +41,11 @@ export default function EventsSection({ events, onOpenInscriptions }: EventsSect
               <div>
                 <div className="relative h-44 bg-gray-100 overflow-hidden">
                   <img
-                    src={evt.image_url || 'https://images.unsplash.com/photo-1475721027785-f74eccf877e2?q=80&w=800'}
+                    src={evt.image_url || '/multimedia/default-academic.svg'}
                     alt={evt.title}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/multimedia/default-academic.svg';
+                    }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />

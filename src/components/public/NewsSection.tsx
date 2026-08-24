@@ -41,8 +41,11 @@ export default function NewsSection({ news }: NewsSectionProps) {
                 {/* Thumbnail */}
                 <div className="relative aspect-video bg-gray-100 overflow-hidden">
                   <img
-                    src={item.image_url || 'https://images.unsplash.com/photo-1511578314322-379afb476865?q=80&w=800'}
+                    src={item.image_url || '/multimedia/default-academic.svg'}
                     alt={item.title}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/multimedia/default-academic.svg';
+                    }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />

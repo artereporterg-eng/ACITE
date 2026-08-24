@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#001f3f" />
+      <stop offset="50%" stop-color="#002b4d" />
+      <stop offset="100%" stop-color="#001428" />
+    </linearGradient>
+    <linearGradient id="goldAcc2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5d77f" />
+      <stop offset="100%" stop-color="#c5a059" />
+    </linearGradient>
+    <radialGradient id="glow2" cx="30%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#c5a059" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#001f3f" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#bgGrad2)"/>
+  <rect width="1920" height="1080" fill="url(#glow2)"/>
+
+  <!-- Geometric Abstract Network Grid -->
+  <g opacity="0.3">
+    <circle cx="1400" cy="450" r="280" fill="none" stroke="url(#goldAcc2)" stroke-width="2" stroke-dasharray="10 5"/>
+    <circle cx="1400" cy="450" r="180" fill="none" stroke="#ffffff" stroke-width="1.5" stroke-opacity="0.3"/>
+    <line x1="1000" y1="200" x2="1400" y2="450" stroke="url(#goldAcc2)" stroke-width="2"/>
+    <line x1="1400" y1="450" x2="1750" y2="300" stroke="url(#goldAcc2)" stroke-width="2"/>
+    <line x1="1400" y1="450" x2="1550" y2="750" stroke="url(#goldAcc2)" stroke-width="2"/>
+    <line x1="1400" y1="450" x2="1150" y2="700" stroke="url(#goldAcc2)" stroke-width="2"/>
+    
+    <circle cx="1000" cy="200" r="12" fill="#f5d77f"/>
+    <circle cx="1750" cy="300" r="14" fill="#c5a059"/>
+    <circle cx="1550" cy="750" r="10" fill="#f5d77f"/>
+    <circle cx="1150" cy="700" r="12" fill="#c5a059"/>
+    <circle cx="1400" cy="450" r="20" fill="#ffffff"/>
+  </g>
+
+  <!-- Mortarboard / Graduation Cap Icon illustration on right -->
+  <g transform="translate(1250, 320)" opacity="0.9">
+    <!-- Cap Diamond -->
+    <polygon points="150,80 300,140 150,200 0,140" fill="#002244" stroke="url(#goldAcc2)" stroke-width="4"/>
+    <!-- Skullcap Base -->
+    <path d="M 60 170 C 60 250 240 250 240 170 Z" fill="#001830" stroke="url(#goldAcc2)" stroke-width="3"/>
+    <!-- Tassel -->
+    <path d="M 150 140 Q 70 170 60 250" fill="none" stroke="#f5d77f" stroke-width="4"/>
+    <circle cx="60" cy="255" r="8" fill="#f5d77f"/>
+  </g>
+
+  <!-- Decorative Badge -->
+  <g transform="translate(180, 220)">
+    <rect x="0" y="0" width="360" height="42" rx="6" fill="#c5a059" fill-opacity="0.15" stroke="url(#goldAcc2)" stroke-width="1.5"/>
+    <circle cx="24" cy="21" r="6" fill="#c5a059"/>
+    <text x="42" y="27" font-family="system-ui, sans-serif" font-size="14" font-weight="800" fill="#f5d77f" letter-spacing="2">CANDIDATURAS &amp; FORMAÇÃO</text>
+  </g>
+
+  <!-- Big Decorative Text Overlay -->
+  <text x="180" y="750" font-family="system-ui, sans-serif" font-size="100" font-weight="900" fill="#ffffff" fill-opacity="0.04" letter-spacing="6">EXCELÊNCIA &amp; INOVAÇÃO</text>
+</svg>

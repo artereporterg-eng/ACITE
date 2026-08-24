@@ -109,8 +109,11 @@ export default function CoursesSection({ courses, onApplyCourse }: CoursesSectio
                 {/* Image Cover */}
                 <div className="relative h-48 bg-gray-100 overflow-hidden">
                   <img
-                    src={course.image_url || 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&w=800'}
+                    src={course.image_url || '/multimedia/default-academic.svg'}
                     alt={course.title}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = '/multimedia/default-academic.svg';
+                    }}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     referrerPolicy="no-referrer"
                   />

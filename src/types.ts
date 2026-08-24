@@ -146,6 +146,44 @@ export interface MediaItem {
   created_at: string;
 }
 
+export interface MigrationItem {
+  version: number;
+  name: string;
+  description?: string;
+  batch: number;
+  applied_at: string;
+  execution_time_ms: number;
+}
+
+export interface TableColumnInfo {
+  name: string;
+  type: string;
+  isPrimary?: boolean;
+}
+
+export interface TableStatsInfo {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  columns: TableColumnInfo[];
+}
+
+export interface DatabaseDiagnostics {
+  engine: string;
+  databaseFile: string;
+  fileSizeBytes: number;
+  fileSizeFormatted: string;
+  integrity: string;
+  currentVersion: number;
+  totalAvailableMigrations: number;
+  totalAppliedMigrations: number;
+  pendingMigrationsCount: number;
+  pendingMigrations: Array<{ version: number; name: string; description: string }>;
+  migrationsHistory: MigrationItem[];
+  tables: TableStatsInfo[];
+  lastCheckedAt: string;
+}
+
 export interface FullContentPayload {
   settings: SiteSettings;
   heroSlides: HeroSlide[];

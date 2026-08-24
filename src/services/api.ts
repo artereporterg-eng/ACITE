@@ -365,3 +365,59 @@ export async function deleteMediaFile(id: number) {
   if (!res.ok) throw new Error(json.error || 'Erro ao eliminar ficheiro');
   return json;
 }
+
+// 4. DATABASE AUTO-UPDATE & SYSTEM TOOLS
+export async function fetchDatabaseDiagnostics() {
+  const res = await fetch(`${API_BASE}/api/admin/database/status`, {
+    headers: { ...getAuthHeader() },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao carregar estado da base de dados');
+  return json;
+}
+
+export async function triggerDatabaseMigration() {
+  const res = await fetch(`${API_BASE}/api/admin/database/migrate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao executar auto-actualização da base de dados');
+  return json;
+}
+
+export async function optimizeDatabase() {
+  const res = await fetch(`${API_BASE}/api/admin/database/optimize`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Falha ao optimizar base de dados');
+  return json;
+}
+
+export async function executeCustomSchema(sql: string) {
+  const res = await fetch(`${API_BASE}/api/admin/database/custom-schema`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify({ sql }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || 'Erro ao executar instrução SQL');
+  return json;
+}
+
+export function getDatabaseBackupUrl(): string {
+  const token = localStorage.getItem('acite_token');
+  return `${API_BASE}/api/admin/database/backup${token ? `?token=${token}` : ''}`;
+}
+

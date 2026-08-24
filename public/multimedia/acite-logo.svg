@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 100" width="100%" height="100%">
+  <defs>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#e5c07b" />
+      <stop offset="100%" stop-color="#c5a059" />
+    </linearGradient>
+    <linearGradient id="blueGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#003366" />
+      <stop offset="100%" stop-color="#001830" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Shield Icon -->
+  <g transform="translate(10, 10)">
+    <path d="M 40 5 L 75 18 L 75 48 C 75 68 40 82 40 82 C 40 82 5 68 5 48 L 5 18 Z" fill="url(#blueGrad)" stroke="url(#goldGrad)" stroke-width="2.5"/>
+    <path d="M 40 12 L 68 23 L 68 47 C 68 62 40 73 40 73 C 40 73 12 62 12 47 L 12 23 Z" fill="#002244" opacity="0.6"/>
+    <!-- Central Monogram A -->
+    <path d="M 40 22 L 54 60 L 46 60 L 42 50 L 38 50 L 34 60 L 26 60 Z M 40 33 L 36 44 L 44 44 Z" fill="url(#goldGrad)"/>
+    <!-- Small star or emblem -->
+    <circle cx="40" cy="18" r="2.5" fill="#f3e5ab"/>
+  </g>
+
+  <!-- Typography -->
+  <g transform="translate(100, 20)">
+    <text x="0" y="32" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="32" fill="#ffffff" letter-spacing="3">ACITE</text>
+    <text x="0" y="52" font-family="system-ui, -apple-system, sans-serif" font-weight="600" font-size="11" fill="#c5a059" letter-spacing="1">ACADEMIA DE CIÊNCIAS SOCIAIS E TECNOLOGIAS</text>
+    <text x="0" y="66" font-family="system-ui, -apple-system, sans-serif" font-weight="400" font-size="9.5" fill="#94a3b8" letter-spacing="0.5">REPÚBLICA DE ANGOLA • ALTOS ESTUDOS</text>
+  </g>
+</svg>

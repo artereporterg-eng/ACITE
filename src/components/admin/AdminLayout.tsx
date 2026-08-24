@@ -18,6 +18,7 @@ import AdminMedia from './AdminMedia';
 import AdminApplications from './AdminApplications';
 import AdminSettings from './AdminSettings';
 import AdminProfile from './AdminProfile';
+import AdminDatabase from './AdminDatabase';
 import { 
   LayoutDashboard, 
   GraduationCap, 
@@ -36,7 +37,8 @@ import {
   Menu, 
   X,
   ExternalLink,
-  ShieldCheck
+  ShieldCheck,
+  Database
 } from 'lucide-react';
 
 interface AdminLayoutProps {
@@ -82,6 +84,7 @@ export default function AdminLayout({ onCloseAdmin }: AdminLayoutProps) {
     { id: 'features', label: 'Diferenciais (Porquê ACITE)', icon: Sparkles },
     { id: 'pages', label: 'Páginas Institucionais', icon: FileText },
     { id: 'media', label: 'Biblioteca de Ficheiros', icon: Image },
+    { id: 'database', label: 'Base de Dados & Sistema', icon: Database },
     { id: 'settings', label: 'Definições do Portal', icon: Settings },
     { id: 'profile', label: 'Conta & Alterar Senha', icon: UserCheck },
   ];
@@ -228,6 +231,7 @@ export default function AdminLayout({ onCloseAdmin }: AdminLayoutProps) {
                 <AdminPages pages={data?.pages || []} onDataUpdated={loadAllData} />
               )}
               {activeTab === 'media' && <AdminMedia />}
+              {activeTab === 'database' && <AdminDatabase />}
               {activeTab === 'settings' && (
                 <AdminSettings initialSettings={data?.settings || {}} onSettingsUpdated={loadAllData} />
               )}

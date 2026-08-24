@@ -11,7 +11,8 @@ import {
   PlusCircle, 
   Settings, 
   Sparkles,
-  FileText
+  FileText,
+  Database
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -120,6 +121,12 @@ export default function AdminDashboard({ setActiveTab }: AdminDashboardProps) {
               className="bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 backdrop-blur-sm"
             >
               <Settings size={14} /> Definições do Portal
+            </button>
+            <button
+              onClick={() => setActiveTab('database')}
+              className="bg-acite-gold text-acite-blue hover:bg-white text-xs font-bold px-4 py-2 rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+            >
+              <Database size={14} /> Base de Dados & Auto-Update
             </button>
           </div>
         </div>

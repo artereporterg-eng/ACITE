@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500" width="100%" height="100%">
+  <defs>
+    <linearGradient id="iaBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#001830" />
+      <stop offset="60%" stop-color="#002b4d" />
+      <stop offset="100%" stop-color="#001428" />
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+    <linearGradient id="goldG" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5d77f" />
+      <stop offset="100%" stop-color="#c5a059" />
+    </linearGradient>
+  </defs>
+
+  <rect width="800" height="500" fill="url(#iaBg)"/>
+  
+  <!-- Neural / Tech Grid -->
+  <g opacity="0.35">
+    <circle cx="400" cy="220" r="160" fill="none" stroke="url(#goldG)" stroke-width="1.5" stroke-dasharray="6 6"/>
+    <circle cx="400" cy="220" r="90" fill="none" stroke="url(#cyanGrad)" stroke-width="2"/>
+    <line x1="220" y1="120" x2="400" y2="220" stroke="#38bdf8" stroke-width="2"/>
+    <line x1="580" y1="120" x2="400" y2="220" stroke="#38bdf8" stroke-width="2"/>
+    <line x1="220" y1="320" x2="400" y2="220" stroke="url(#goldG)" stroke-width="2"/>
+    <line x1="580" y1="320" x2="400" y2="220" stroke="url(#goldG)" stroke-width="2"/>
+    
+    <circle cx="220" cy="120" r="10" fill="#38bdf8"/>
+    <circle cx="580" cy="120" r="10" fill="#38bdf8"/>
+    <circle cx="220" cy="320" r="10" fill="#c5a059"/>
+    <circle cx="580" cy="320" r="10" fill="#c5a059"/>
+    <circle cx="400" cy="220" r="18" fill="#ffffff"/>
+  </g>
+
+  <!-- Central Brain / Circuit Icon -->
+  <g transform="translate(360, 180)">
+    <path d="M 40 10 C 20 10 10 25 10 40 C 10 50 15 60 25 65 C 20 75 25 85 40 85 Z" fill="none" stroke="url(#cyanGrad)" stroke-width="3"/>
+    <path d="M 40 10 C 60 10 70 25 70 40 C 70 50 65 60 55 65 C 60 75 55 85 40 85 Z" fill="none" stroke="url(#goldG)" stroke-width="3"/>
+  </g>
+
+  <!-- Bottom Course Info Banner -->
+  <rect y="410" width="800" height="90" fill="#001428" fill-opacity="0.9"/>
+  <text x="30" y="445" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#c5a059" letter-spacing="2">DOUTORAMENTO (PHD)</text>
+  <text x="30" y="475" font-family="system-ui, sans-serif" font-size="18" font-weight="800" fill="#ffffff">Ciências da Computação &amp; Inteligência Artificial</text>
+</svg>
