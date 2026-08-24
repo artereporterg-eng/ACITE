@@ -21,6 +21,33 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * Safely parses response as JSON, with graceful fallback for HTML/Text error responses (e.g. 502, 500 or 404 HTML pages)
+ */
+async function parseJsonResponse<T = any>(res: Response, fallbackErrorMsg = 'Erro na comunicação com o servidor'): Promise<T> {
+  const text = await res.text();
+  let json: any = null;
+  
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // If server returned non-JSON (e.g., HTML error or empty response)
+      if (!res.ok) {
+        throw new Error(`Erro do Servidor (${res.status}): ${res.statusText || fallbackErrorMsg}`);
+      }
+      throw new Error(fallbackErrorMsg);
+    }
+  }
+
+  if (!res.ok) {
+    const errorDetail = json?.error || json?.message || `Erro HTTP ${res.status}: ${res.statusText || fallbackErrorMsg}`;
+    throw new Error(errorDetail);
+  }
+
+  return (json || {}) as T;
+}
+
 // 1. PUBLIC APIS
 export async function fetchPublicContent(): Promise<FullContentPayload> {
   const res = await fetch(`${API_BASE}/api/public/content`);
@@ -434,18 +461,14 @@ export async function fetchUsers(params?: { category?: string; status?: string; 
   const res = await fetch(`${API_BASE}/api/admin/users${qs}`, {
     headers: { ...getAuthHeader() },
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Falha ao carregar lista de utilizadores');
-  return json;
+  return parseJsonResponse<UserListResponse>(res, 'Falha ao carregar lista de utilizadores');
 }
 
 export async function fetchUserCategories(): Promise<{ categories: UserCategory[] }> {
   const res = await fetch(`${API_BASE}/api/admin/users/categories`, {
     headers: { ...getAuthHeader() },
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Falha ao carregar categorias de utilizadores');
-  return json;
+  return parseJsonResponse<{ categories: UserCategory[] }>(res, 'Falha ao carregar categorias de utilizadores');
 }
 
 export async function createUser(userData: {
@@ -467,9 +490,7 @@ export async function createUser(userData: {
     },
     body: JSON.stringify(userData),
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Falha ao criar utilizador');
-  return json;
+  return parseJsonResponse(res, 'Falha ao criar utilizador');
 }
 
 export async function updateUser(id: number, userData: Partial<User> & { new_password?: string }): Promise<{ success: boolean; message: string; user: User }> {
@@ -481,9 +502,7 @@ export async function updateUser(id: number, userData: Partial<User> & { new_pas
     },
     body: JSON.stringify(userData),
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Falha ao actualizar utilizador');
-  return json;
+  return parseJsonResponse(res, 'Falha ao actualizar utilizador');
 }
 
 export async function toggleUserStatus(id: number): Promise<{ success: boolean; status: 'Ativo' | 'Inativo'; message: string }> {
@@ -491,9 +510,7 @@ export async function toggleUserStatus(id: number): Promise<{ success: boolean; 
     method: 'PATCH',
     headers: { ...getAuthHeader() },
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Falha ao alterar estado do utilizador');
-  return json;
+  return parseJsonResponse(res, 'Falha ao alterar estado do utilizador');
 }
 
 export async function deleteUser(id: number): Promise<{ success: boolean; message: string }> {
@@ -501,9 +518,7 @@ export async function deleteUser(id: number): Promise<{ success: boolean; messag
     method: 'DELETE',
     headers: { ...getAuthHeader() },
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Falha ao eliminar utilizador');
-  return json;
+  return parseJsonResponse(res, 'Falha ao eliminar utilizador');
 }
 
 
