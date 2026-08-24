@@ -1,5 +1,8 @@
 {
   "name": "ACITE - Academia de Ciências Sociais e Tecnologias",
-  "description": "Instituição de Ensino Superior Pública de Altos Estudos em Angola, focada em Ciências Sociais, Engenharias e Tecnologias.",
-  "requestFramePermissions": []
+  "description": "Instituição de Ensino Superior Pública de Altos Estudos em Angola com painel CMS integrado (WordPress-like) para gestão dinâmica de cursos, notícias, eventos e inscrições.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
