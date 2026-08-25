@@ -11,7 +11,7 @@ interface LoginModalProps {
 export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginModalProps) {
   const { login } = useAuth();
   const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin');
+  const [password, setPassword] = useState('123');
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -32,9 +32,9 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
     }
   };
 
-  const handleUseDefault = () => {
-    setUsername('admin');
-    setPassword('admin');
+  const handleSetUser = (u: string, p: string) => {
+    setUsername(u);
+    setPassword(p);
   };
 
   return (
@@ -59,18 +59,29 @@ export default function LoginModal({ isOpen, onClose, onLoginSuccess }: LoginMod
         </div>
 
         {/* Default Credential Notice */}
-        <div className="bg-blue-50/70 border border-blue-200/80 rounded-xl p-3 mb-5 text-xs text-blue-900 flex items-center justify-between">
-          <div>
-            <p className="font-semibold">Credenciais Padrão:</p>
-            <p className="text-blue-700">Utilizador: <strong>admin</strong> | Senha: <strong>admin</strong></p>
+        <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 mb-5 text-xs text-blue-950">
+          <p className="font-bold text-[11px] uppercase tracking-wider text-acite-blue mb-1.5 flex items-center gap-1">
+            <Shield size={13} className="text-acite-gold" /> Utilizadores Padrão Configurados:
+          </p>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => handleSetUser('admin', '123')}
+              className="p-2 bg-white border border-blue-200 hover:border-acite-blue rounded-lg text-left transition-all hover:shadow-xs group cursor-pointer"
+            >
+              <div className="text-[11px] font-bold text-gray-900 group-hover:text-acite-blue">admin</div>
+              <div className="text-[10px] text-gray-500">Palavra-passe: <strong className="text-gray-800">123</strong></div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSetUser('fox', '123')}
+              className="p-2 bg-white border border-blue-200 hover:border-acite-blue rounded-lg text-left transition-all hover:shadow-xs group cursor-pointer"
+            >
+              <div className="text-[11px] font-bold text-gray-900 group-hover:text-acite-blue">fox</div>
+              <div className="text-[10px] text-gray-500">Palavra-passe: <strong className="text-gray-800">123</strong></div>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={handleUseDefault}
-            className="px-2.5 py-1 bg-acite-blue text-white rounded text-[10px] font-bold hover:bg-opacity-90 transition-all cursor-pointer shrink-0"
-          >
-            Preencher
-          </button>
         </div>
 
         {errorMsg && (

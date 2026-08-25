@@ -22,28 +22,72 @@ export function initDatabase() {
     fs.mkdirSync(multimediaDir, { recursive: true });
   }
 
-  // Execute Auto-Migrations System (creates and evolves all tables safely)
-  try {
-    const migrationResult = runAutoMigrations(db);
-    if (migrationResult.executed > 0) {
-      console.log(`🚀 [DB System] Auto-actualização concluída: ${migrationResult.executed} migrações aplicadas. Versão actual: v${migrationResult.currentVersion}`);
-    } else {
-      console.log(`👌 [DB System] Base de dados sincronizada na versão v${migrationResult.currentVersion}`);
-    }
-  } catch (migErr) {
-    console.error('⚠️ Erro ao executar auto-migrações:', migErr);
+  // Ensure users table exists with all modern columns
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL DEFAULT 'Administrador ACITE',
+      email TEXT UNIQUE,
+      role TEXT NOT NULL DEFAULT 'admin',
+      category TEXT DEFAULT 'Super Administrador',
+      department TEXT DEFAULT 'Direcção Geral',
+      phone TEXT,
+      status TEXT DEFAULT 'Ativo',
+      avatar_url TEXT,
+      last_login_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Safely ensure columns exist if created by earlier versions
+  const userColumns = db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+  const userColNames = userColumns.map(c => c.name.toLowerCase());
+  if (!userColNames.includes('category')) db.exec("ALTER TABLE users ADD COLUMN category TEXT DEFAULT 'Super Administrador'");
+  if (!userColNames.includes('department')) db.exec("ALTER TABLE users ADD COLUMN department TEXT DEFAULT 'Direcção Geral'");
+  if (!userColNames.includes('phone')) db.exec("ALTER TABLE users ADD COLUMN phone TEXT");
+  if (!userColNames.includes('status')) db.exec("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'Ativo'");
+  if (!userColNames.includes('avatar_url')) db.exec("ALTER TABLE users ADD COLUMN avatar_url TEXT");
+  if (!userColNames.includes('last_login_at')) db.exec("ALTER TABLE users ADD COLUMN last_login_at DATETIME");
+
+  // Default credentials: admin (pass: 123) & fox (pass: 123)
+  const salt = bcrypt.genSaltSync(10);
+  const hash123 = bcrypt.hashSync('123', salt);
+
+  // 1. Admin user configuration (password: 123)
+  const adminUser = db.prepare('SELECT * FROM users WHERE username = ?').get('admin') as any;
+  if (adminUser) {
+    db.prepare(`
+      UPDATE users 
+      SET password_hash = ?, role = 'superadmin', category = 'Super Administrador', status = 'Ativo', name = 'Administrador Geral'
+      WHERE username = 'admin'
+    `).run(hash123);
+    console.log('✅ Utilizador padrão "admin" configurado com a palavra-passe "123"');
+  } else {
+    db.prepare(`
+      INSERT INTO users (username, password_hash, name, email, role, category, department, phone, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('admin', hash123, 'Administrador Geral', 'admin@acite.ao', 'superadmin', 'Super Administrador', 'Direcção Geral & Reitoria', '+244 923 000 000', 'Ativo');
+    console.log('✅ Utilizador padrão "admin" criado com sucesso (user: admin | pass: 123)');
   }
 
-  // Ensure default admin exists (user: admin, pass: admin)
-  const adminUser = db.prepare('SELECT * FROM users WHERE username = ?').get('admin');
-  if (!adminUser) {
-    const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync('admin', salt);
+  // 2. Fox user configuration (password: 123)
+  const foxUser = db.prepare('SELECT * FROM users WHERE username = ?').get('fox') as any;
+  if (foxUser) {
     db.prepare(`
-      INSERT INTO users (username, password_hash, name, email, role)
-      VALUES (?, ?, ?, ?, ?)
-    `).run('admin', hash, 'Administrador Geral', 'admin@acite.ao', 'superadmin');
-    console.log('✅ Default admin created: user="admin" | password="admin"');
+      UPDATE users 
+      SET password_hash = ?, role = 'superadmin', category = 'Super Administrador', status = 'Ativo', name = 'Fox Administrator'
+      WHERE username = 'fox'
+    `).run(hash123);
+    console.log('✅ Utilizador padrão "fox" configurado com a palavra-passe "123"');
+  } else {
+    db.prepare(`
+      INSERT INTO users (username, password_hash, name, email, role, category, department, phone, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('fox', hash123, 'Fox Administrator', 'fox@acite.ao', 'superadmin', 'Super Administrador', 'Gabinete de Tecnologias de Informação', '+244 912 345 678', 'Ativo');
+    console.log('✅ Utilizador padrão "fox" criado com sucesso (user: fox | pass: 123)');
   }
 
   // 2. Site settings table
@@ -197,6 +241,94 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // 12. Audit Logs
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      details TEXT,
+      ip_address TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 13. System Notifications
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS system_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT DEFAULT 'info',
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      link_url TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 14. Dynamic Navigation Menus
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS navigation_menus (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      menu_location TEXT NOT NULL,
+      title TEXT NOT NULL,
+      url TEXT NOT NULL,
+      target TEXT DEFAULT '_self',
+      order_index INTEGER DEFAULT 0,
+      parent_id INTEGER DEFAULT NULL,
+      is_active INTEGER DEFAULT 1
+    );
+  `);
+
+  // 15. Contact Messages
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS contact_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      subject TEXT NOT NULL,
+      message TEXT NOT NULL,
+      status TEXT DEFAULT 'Não Lida',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // 16. Newsletter Subscribers
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      full_name TEXT,
+      is_active INTEGER DEFAULT 1,
+      subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Ensure extended columns exist across all tables
+  try {
+    const courseCols = (db.prepare('PRAGMA table_info(courses)').all() as any[]).map(c => c.name.toLowerCase());
+    if (!courseCols.includes('coordinator')) db.exec("ALTER TABLE courses ADD COLUMN coordinator TEXT");
+    if (!courseCols.includes('credits')) db.exec("ALTER TABLE courses ADD COLUMN credits INTEGER DEFAULT 120");
+    if (!courseCols.includes('schedule_info')) db.exec("ALTER TABLE courses ADD COLUMN schedule_info TEXT");
+
+    const newsCols = (db.prepare('PRAGMA table_info(news)').all() as any[]).map(c => c.name.toLowerCase());
+    if (!newsCols.includes('tags')) db.exec("ALTER TABLE news ADD COLUMN tags TEXT");
+    if (!newsCols.includes('meta_keywords')) db.exec("ALTER TABLE news ADD COLUMN meta_keywords TEXT");
+
+    const pubCols = (db.prepare('PRAGMA table_info(publications)').all() as any[]).map(c => c.name.toLowerCase());
+    if (!pubCols.includes('doi')) db.exec("ALTER TABLE publications ADD COLUMN doi TEXT");
+    if (!pubCols.includes('citations_count')) db.exec("ALTER TABLE publications ADD COLUMN citations_count INTEGER DEFAULT 0");
+
+    const appCols = (db.prepare('PRAGMA table_info(applications)').all() as any[]).map(c => c.name.toLowerCase());
+    if (!appCols.includes('reviewed_by')) db.exec("ALTER TABLE applications ADD COLUMN reviewed_by TEXT");
+    if (!appCols.includes('reviewed_at')) db.exec("ALTER TABLE applications ADD COLUMN reviewed_at DATETIME");
+    if (!appCols.includes('rejection_reason')) db.exec("ALTER TABLE applications ADD COLUMN rejection_reason TEXT");
+  } catch (e) {}
 
   // Seed default site settings if empty
   const settingsCount = db.prepare('SELECT COUNT(*) as count FROM site_settings').get() as { count: number };
