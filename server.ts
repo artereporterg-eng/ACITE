@@ -7,8 +7,8 @@ import { initDatabase } from './server/db.js';
 import apiRouter from './server/routes.js';
 
 async function startServer() {
-  // Initialize Database and Seed Data
-  initDatabase();
+  // Initialize Turso Database and Seed Data
+  await initDatabase();
 
   const app = express();
   const PORT = 3000;
@@ -34,7 +34,7 @@ async function startServer() {
 
   // Health check route
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', name: 'ACITE Portal & CMS Backend', timestamp: new Date().toISOString() });
+    res.json({ status: 'ok', name: 'ACITE Portal & CMS Backend (Turso)', timestamp: new Date().toISOString() });
   });
 
   // Vite middleware for development vs static for production
@@ -54,7 +54,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 ACITE Full-Stack Server running on http://localhost:${PORT}`);
-    console.log(`🔐 Admin credentials: Username="admin" | Password="admin"`);
+    console.log(`🔐 Admin credentials: Username="admin" | Password="123" | Username="fox" | Password="123"`);
   });
 }
 

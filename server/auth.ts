@@ -44,7 +44,7 @@ export function generateToken(user: {
   );
 }
 
-export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
+export async function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
     let token: string | undefined;
@@ -71,7 +71,10 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
     };
 
     // Verify user still exists in db and check status
-    const user = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, avatar_url FROM users WHERE id = ?').get(decoded.id) as any;
+    const user = await db.get(
+      'SELECT id, username, name, email, role, category, department, phone, status, avatar_url FROM users WHERE id = ?',
+      [decoded.id]
+    );
 
     if (!user) {
       res.status(401).json({ error: 'Utilizador não encontrado ou sessão expirada.' });
@@ -96,5 +99,9 @@ export function hashPassword(password: string): string {
 }
 
 export function comparePassword(password: string, hash: string): boolean {
-  return bcrypt.compareSync(password, hash);
+  try {
+    return bcrypt.compareSync(password, hash);
+  } catch {
+    return false;
+  }
 }

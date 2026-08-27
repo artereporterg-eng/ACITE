@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { db, dbPath, runAutoMigrations, getDatabaseDiagnostics, executeCustomSchemaUpdate } from './db.js';
+import { db, getDatabaseDiagnostics } from './db.js';
 import { authMiddleware, AuthRequest, generateToken, hashPassword, comparePassword } from './auth.js';
 
 const router = Router();
@@ -11,8 +11,12 @@ const router = Router();
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadPath = path.join(process.cwd(), 'uploads');
-    if (!fs.existsSync(uploadPath)) {
-      fs.mkdirSync(uploadPath, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+    } catch {
+      // ignore
     }
     cb(null, uploadPath);
   },
@@ -39,7 +43,6 @@ const upload = multer({
 // 1. AUTHENTICATION & MULTI-USER MANAGEMENT
 // ==========================================
 
-// Predefined user categories and their standard departments
 export const USER_CATEGORIES = [
   {
     id: 'superadmin',
@@ -92,7 +95,7 @@ export const USER_CATEGORIES = [
 ];
 
 // Login
-router.post('/api/auth/login', (req: Request, res: Response) => {
+router.post('/api/auth/login', async (req: Request, res: Response) => {
   try {
     const { username, password } = req.body;
 
@@ -101,7 +104,8 @@ router.post('/api/auth/login', (req: Request, res: Response) => {
       return;
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim()) as any;
+    const cleanUsername = username.trim();
+    const user = await db.get('SELECT * FROM users WHERE username = ?', [cleanUsername]);
 
     if (!user) {
       res.status(401).json({ error: 'Credenciais incorrectas. Verifique o utilizador ou a senha.' });
@@ -121,9 +125,9 @@ router.post('/api/auth/login', (req: Request, res: Response) => {
 
     // Update last login timestamp
     try {
-      db.prepare('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?').run(user.id);
+      await db.run('UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
     } catch {
-      // ignore if column not yet queried
+      // ignore
     }
 
     const token = generateToken({
@@ -176,18 +180,17 @@ router.post('/api/auth/logout', (req: Request, res: Response) => {
 });
 
 // Update Profile & Change Admin Password
-router.put('/api/auth/profile', authMiddleware, (req: AuthRequest, res: Response) => {
+router.put('/api/auth/profile', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.id;
     const { name, email, username, phone, department, current_password, new_password } = req.body;
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) {
       res.status(404).json({ error: 'Utilizador não encontrado.' });
       return;
     }
 
-    // Check if changing password
     if (new_password) {
       if (!current_password) {
         res.status(400).json({ error: 'Para alterar a senha, deve introduzir a senha actual.' });
@@ -197,43 +200,46 @@ router.put('/api/auth/profile', authMiddleware, (req: AuthRequest, res: Response
         res.status(400).json({ error: 'A senha actual está incorrecta.' });
         return;
       }
-      if (new_password.length < 4) {
-        res.status(400).json({ error: 'A nova senha deve ter pelo menos 4 caracteres.' });
+      if (new_password.length < 3) {
+        res.status(400).json({ error: 'A nova senha deve ter pelo menos 3 caracteres.' });
         return;
       }
 
       const newHash = hashPassword(new_password);
-      db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(newHash, userId);
+      await db.run('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newHash, userId]);
     }
 
-    // Check if changing username
     if (username && username !== user.username) {
-      const existing = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, userId);
+      const existing = await db.get('SELECT id FROM users WHERE username = ? AND id != ?', [username, userId]);
       if (existing) {
         res.status(400).json({ error: 'Este nome de utilizador já está a ser utilizado por outra conta.' });
         return;
       }
     }
 
-    db.prepare(`
-      UPDATE users 
-      SET name = COALESCE(?, name),
-          email = COALESCE(?, email),
-          username = COALESCE(?, username),
-          phone = COALESCE(?, phone),
-          department = COALESCE(?, department),
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
-      name || user.name, 
-      email || user.email, 
-      username || user.username,
-      phone !== undefined ? phone : user.phone,
-      department !== undefined ? department : user.department,
-      userId
+    await db.run(
+      `UPDATE users 
+       SET name = COALESCE(?, name),
+           email = COALESCE(?, email),
+           username = COALESCE(?, username),
+           phone = COALESCE(?, phone),
+           department = COALESCE(?, department),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        name || user.name, 
+        email || user.email, 
+        username || user.username,
+        phone !== undefined ? phone : user.phone,
+        department !== undefined ? department : user.department,
+        userId
+      ]
     );
 
-    const updatedUser = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, avatar_url FROM users WHERE id = ?').get(userId);
+    const updatedUser = await db.get(
+      'SELECT id, username, name, email, role, category, department, phone, status, avatar_url FROM users WHERE id = ?',
+      [userId]
+    );
 
     res.json({
       success: true,
@@ -250,8 +256,8 @@ router.get('/api/admin/users/categories', authMiddleware, (req: AuthRequest, res
   res.json({ categories: USER_CATEGORIES });
 });
 
-// Get all users with filters and category breakdown
-router.get('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response) => {
+// Get all users
+router.get('/api/admin/users', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { category, search, status } = req.query;
 
@@ -276,10 +282,9 @@ router.get('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response)
 
     query += ' ORDER BY id ASC';
 
-    const users = db.prepare(query).all(...params) as any[];
+    const users = await db.all(query, params);
+    const allUsers = await db.all('SELECT category, status FROM users');
 
-    // Calculate category breakdown stats
-    const allUsers = db.prepare('SELECT category, status FROM users').all() as any[];
     const categoryStats: Record<string, number> = {
       total: allUsers.length,
       active: allUsers.filter(u => (u.status || 'Ativo') === 'Ativo').length,
@@ -305,8 +310,8 @@ router.get('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response)
   }
 });
 
-// Create a new user with Category & Department
-router.post('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response) => {
+// Create user
+router.post('/api/admin/users', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const { username, password, name, email, role, category, department, phone, status } = req.body;
 
@@ -315,27 +320,21 @@ router.post('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response
       return;
     }
 
-    if (password.length < 4) {
-      res.status(400).json({ error: 'A palavra-passe deve ter pelo menos 4 caracteres.' });
-      return;
-    }
-
     const cleanUsername = username.trim().toLowerCase();
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(cleanUsername);
+    const existing = await db.get('SELECT id FROM users WHERE username = ?', [cleanUsername]);
     if (existing) {
       res.status(400).json({ error: 'O nome de utilizador já está em uso.' });
       return;
     }
 
     if (email) {
-      const existingEmail = db.prepare('SELECT id FROM users WHERE email = ?').get(email.trim());
+      const existingEmail = await db.get('SELECT id FROM users WHERE email = ?', [email.trim()]);
       if (existingEmail) {
         res.status(400).json({ error: 'O endereço de e-mail já está associado a outra conta.' });
         return;
       }
     }
 
-    // Determine category and default role
     const matchedCategory = USER_CATEGORIES.find(c => c.name === category || c.id === role);
     const finalCategory = category || matchedCategory?.name || 'Super Administrador';
     const finalRole = role || matchedCategory?.role || 'admin';
@@ -343,37 +342,23 @@ router.post('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response
     const finalStatus = status || 'Ativo';
 
     const hash = hashPassword(password);
-    const result = db.prepare(`
-      INSERT INTO users (username, password_hash, name, email, role, category, department, phone, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      cleanUsername, 
-      hash, 
-      name.trim(), 
-      email ? email.trim() : '', 
-      finalRole, 
-      finalCategory, 
-      finalDepartment, 
-      phone ? phone.trim() : '', 
-      finalStatus
+    const result = await db.run(
+      `INSERT INTO users (username, password_hash, name, email, role, category, department, phone, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        cleanUsername, 
+        hash, 
+        name.trim(), 
+        email ? email.trim() : '', 
+        finalRole, 
+        finalCategory, 
+        finalDepartment, 
+        phone ? phone.trim() : '', 
+        finalStatus
+      ]
     );
 
-    // Audit log
-    try {
-      db.prepare(`
-        INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
-        VALUES (?, ?, 'CREATE', 'users', ?, ?)
-      `).run(
-        req.user?.id || null,
-        req.user?.username || 'admin',
-        result.lastInsertRowid.toString(),
-        `Novo utilizador criado: ${name} (${cleanUsername}) na categoria ${finalCategory}`
-      );
-    } catch {
-      // ignore
-    }
-
-    const newUser = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+    const newUser = await db.get('SELECT id, username, name, email, role, category, department, phone, status, created_at FROM users WHERE id = ?', [result.lastInsertRowid]);
 
     res.status(201).json({ 
       success: true, 
@@ -386,35 +371,34 @@ router.post('/api/admin/users', authMiddleware, (req: AuthRequest, res: Response
   }
 });
 
-// Update user details, category, department, status or password
-router.put('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+// Update user
+router.put('/api/admin/users/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const targetId = parseInt(req.params.id, 10);
     const { name, email, role, category, department, phone, status, new_password } = req.body;
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(targetId) as any;
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [targetId]);
     if (!user) {
       res.status(404).json({ error: 'Utilizador não encontrado.' });
       return;
     }
 
-    // Protect primary admin from being deactivated or de-elevated
     if (user.username === 'admin' && status === 'Inativo') {
       res.status(400).json({ error: 'Não é permitido desactivar a conta principal de administração (admin).' });
       return;
     }
 
     if (new_password) {
-      if (new_password.length < 4) {
-        res.status(400).json({ error: 'A nova palavra-passe deve ter pelo menos 4 caracteres.' });
+      if (new_password.length < 3) {
+        res.status(400).json({ error: 'A nova palavra-passe deve ter pelo menos 3 caracteres.' });
         return;
       }
       const newHash = hashPassword(new_password);
-      db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(newHash, targetId);
+      await db.run('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, targetId]);
     }
 
     if (email && email !== user.email) {
-      const existingEmail = db.prepare('SELECT id FROM users WHERE email = ? AND id != ?').get(email, targetId);
+      const existingEmail = await db.get('SELECT id FROM users WHERE email = ? AND id != ?', [email, targetId]);
       if (existingEmail) {
         res.status(400).json({ error: 'O endereço de e-mail já está associado a outra conta.' });
         return;
@@ -427,44 +411,30 @@ router.put('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Respo
     const finalDepartment = department !== undefined ? department : (user.department || 'Direcção Geral');
     const finalStatus = status !== undefined ? status : (user.status || 'Ativo');
 
-    db.prepare(`
-      UPDATE users 
-      SET name = COALESCE(?, name),
-          email = COALESCE(?, email),
-          role = ?,
-          category = ?,
-          department = ?,
-          phone = COALESCE(?, phone),
-          status = ?,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(
-      name || user.name,
-      email !== undefined ? email : user.email,
-      finalRole,
-      finalCategory,
-      finalDepartment,
-      phone !== undefined ? phone : user.phone,
-      finalStatus,
-      targetId
+    await db.run(
+      `UPDATE users 
+       SET name = COALESCE(?, name),
+           email = COALESCE(?, email),
+           role = ?,
+           category = ?,
+           department = ?,
+           phone = COALESCE(?, phone),
+           status = ?,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        name || user.name,
+        email !== undefined ? email : user.email,
+        finalRole,
+        finalCategory,
+        finalDepartment,
+        phone !== undefined ? phone : user.phone,
+        finalStatus,
+        targetId
+      ]
     );
 
-    const updated = db.prepare('SELECT id, username, name, email, role, category, department, phone, status, updated_at FROM users WHERE id = ?').get(targetId);
-
-    // Audit log
-    try {
-      db.prepare(`
-        INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
-        VALUES (?, ?, 'UPDATE', 'users', ?, ?)
-      `).run(
-        req.user?.id || null,
-        req.user?.username || 'admin',
-        targetId.toString(),
-        `Utilizador actualizado: ${user.username} (Categoria: ${finalCategory}, Estado: ${finalStatus})`
-      );
-    } catch {
-      // ignore
-    }
+    const updated = await db.get('SELECT id, username, name, email, role, category, department, phone, status, updated_at FROM users WHERE id = ?', [targetId]);
 
     res.json({
       success: true,
@@ -476,11 +446,11 @@ router.put('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Respo
   }
 });
 
-// Quick toggle active / inactive status
-router.patch('/api/admin/users/:id/toggle-status', authMiddleware, (req: AuthRequest, res: Response) => {
+// Toggle status
+router.patch('/api/admin/users/:id/toggle-status', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const targetId = parseInt(req.params.id, 10);
-    const user = db.prepare('SELECT id, username, status FROM users WHERE id = ?').get(targetId) as any;
+    const user = await db.get('SELECT id, username, status FROM users WHERE id = ?', [targetId]);
     
     if (!user) {
       res.status(404).json({ error: 'Utilizador não encontrado.' });
@@ -498,7 +468,7 @@ router.patch('/api/admin/users/:id/toggle-status', authMiddleware, (req: AuthReq
     }
 
     const nextStatus = user.status === 'Inativo' ? 'Ativo' : 'Inativo';
-    db.prepare('UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(nextStatus, targetId);
+    await db.run('UPDATE users SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [nextStatus, targetId]);
 
     res.json({
       success: true,
@@ -511,10 +481,10 @@ router.patch('/api/admin/users/:id/toggle-status', authMiddleware, (req: AuthReq
 });
 
 // Delete user
-router.delete('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Response) => {
+router.delete('/api/admin/users/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const targetId = parseInt(req.params.id, 10);
-    const user = db.prepare('SELECT id, username, name FROM users WHERE id = ?').get(targetId) as any;
+    const user = await db.get('SELECT id, username, name FROM users WHERE id = ?', [targetId]);
 
     if (!user) {
       res.status(404).json({ error: 'Utilizador não encontrado.' });
@@ -531,22 +501,7 @@ router.delete('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Re
       return;
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
-
-    // Audit log
-    try {
-      db.prepare(`
-        INSERT INTO audit_logs (user_id, username, action, entity_type, entity_id, details)
-        VALUES (?, ?, 'DELETE', 'users', ?, ?)
-      `).run(
-        req.user?.id || null,
-        req.user?.username || 'admin',
-        targetId.toString(),
-        `Utilizador eliminado: ${user.name} (${user.username})`
-      );
-    } catch {
-      // ignore
-    }
+    await db.run('DELETE FROM users WHERE id = ?', [targetId]);
 
     res.json({ success: true, message: `Utilizador "${user.name}" eliminado com sucesso.` });
   } catch (err: any) {
@@ -555,38 +510,24 @@ router.delete('/api/admin/users/:id', authMiddleware, (req: AuthRequest, res: Re
 });
 
 // ==========================================
-// 2. PUBLIC API ROUTES (For Fast Frontend Load)
+// 2. PUBLIC API ROUTES
 // ==========================================
 
-router.get('/api/public/content', (req: Request, res: Response) => {
+router.get('/api/public/content', async (req: Request, res: Response) => {
   try {
-    // 1. Settings object
-    const settingsRows = db.prepare('SELECT key, value FROM site_settings').all() as { key: string; value: string }[];
+    const settingsRows = await db.all('SELECT key, value FROM site_settings');
     const settings: Record<string, string> = {};
-    settingsRows.forEach((r) => {
+    settingsRows.forEach((r: any) => {
       settings[r.key] = r.value;
     });
 
-    // 2. Hero slides
-    const heroSlides = db.prepare('SELECT * FROM hero_slides WHERE is_active = 1 ORDER BY order_index ASC').all();
-
-    // 3. Courses
-    const courses = db.prepare('SELECT * FROM courses WHERE is_active = 1 ORDER BY featured DESC, id ASC').all();
-
-    // 4. News
-    const news = db.prepare('SELECT * FROM news WHERE is_published = 1 ORDER BY published_at DESC LIMIT 6').all();
-
-    // 5. Events
-    const events = db.prepare('SELECT * FROM events WHERE is_active = 1 ORDER BY event_date ASC LIMIT 6').all();
-
-    // 6. Publications
-    const publications = db.prepare('SELECT * FROM publications ORDER BY year DESC, id DESC LIMIT 6').all();
-
-    // 7. Features
-    const features = db.prepare('SELECT * FROM features ORDER BY order_index ASC, id ASC').all();
-
-    // 8. Pages
-    const pages = db.prepare('SELECT id, slug, title, content, meta_description FROM pages').all();
+    const heroSlides = await db.all('SELECT * FROM hero_slides WHERE is_active = 1 ORDER BY order_index ASC');
+    const courses = await db.all('SELECT * FROM courses WHERE is_active = 1 ORDER BY featured DESC, id ASC');
+    const news = await db.all('SELECT * FROM news WHERE is_published = 1 ORDER BY published_at DESC LIMIT 6');
+    const events = await db.all('SELECT * FROM events WHERE is_active = 1 ORDER BY event_date ASC LIMIT 6');
+    const publications = await db.all('SELECT * FROM publications ORDER BY year DESC, id DESC LIMIT 6');
+    const features = await db.all('SELECT * FROM features ORDER BY order_index ASC, id ASC');
+    const pages = await db.all('SELECT id, slug, title, content, meta_description FROM pages');
 
     res.json({
       settings,
@@ -603,30 +544,77 @@ router.get('/api/public/content', (req: Request, res: Response) => {
   }
 });
 
-// Public Course details
-router.get('/api/public/courses/:slug', (req: Request, res: Response) => {
-  const course = db.prepare('SELECT * FROM courses WHERE slug = ? OR id = ?').get(req.params.slug, req.params.slug);
-  if (!course) {
-    res.status(404).json({ error: 'Curso não encontrado.' });
-    return;
+// Public Course list & details
+router.get('/api/public/courses', async (req: Request, res: Response) => {
+  try {
+    const courses = await db.all('SELECT * FROM courses WHERE is_active = 1 ORDER BY featured DESC, id ASC');
+    res.json(courses);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-  res.json(course);
 });
 
-// Public News details
-router.get('/api/public/news/:slug', (req: Request, res: Response) => {
-  const article = db.prepare('SELECT * FROM news WHERE slug = ? OR id = ?').get(req.params.slug, req.params.slug) as any;
-  if (!article) {
-    res.status(404).json({ error: 'Notícia não encontrada.' });
-    return;
+router.get('/api/public/courses/:slug', async (req: Request, res: Response) => {
+  try {
+    const course = await db.get('SELECT * FROM courses WHERE slug = ? OR id = ?', [req.params.slug, req.params.slug]);
+    if (!course) {
+      res.status(404).json({ error: 'Curso não encontrado.' });
+      return;
+    }
+    res.json(course);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
-  // Increment view count
-  db.prepare('UPDATE news SET views = views + 1 WHERE id = ?').run(article.id);
-  res.json(article);
 });
 
-// Public Application submission (Frontend Inscrição Form)
-router.post('/api/public/applications', (req: Request, res: Response) => {
+// Public News
+router.get('/api/public/news', async (req: Request, res: Response) => {
+  try {
+    const articles = await db.all('SELECT * FROM news WHERE is_published = 1 ORDER BY published_at DESC');
+    res.json(articles);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get('/api/public/news/:slug', async (req: Request, res: Response) => {
+  try {
+    const article = await db.get('SELECT * FROM news WHERE slug = ? OR id = ?', [req.params.slug, req.params.slug]);
+    if (!article) {
+      res.status(404).json({ error: 'Notícia não encontrada.' });
+      return;
+    }
+    try {
+      await db.run('UPDATE news SET views = views + 1 WHERE id = ?', [article.id]);
+    } catch {}
+    res.json(article);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Public Events
+router.get('/api/public/events', async (req: Request, res: Response) => {
+  try {
+    const events = await db.all('SELECT * FROM events WHERE is_active = 1 ORDER BY event_date ASC');
+    res.json(events);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Public Publications
+router.get('/api/public/publications', async (req: Request, res: Response) => {
+  try {
+    const pubs = await db.all('SELECT * FROM publications ORDER BY year DESC, id DESC');
+    res.json(pubs);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Public Application submission
+router.post('/api/public/applications', async (req: Request, res: Response) => {
   try {
     const {
       full_name,
@@ -645,22 +633,23 @@ router.post('/api/public/applications', (req: Request, res: Response) => {
       return;
     }
 
-    const result = db.prepare(`
-      INSERT INTO applications (
+    const result = await db.run(
+      `INSERT INTO applications (
         full_name, email, phone, identity_card, course_id, 
         course_title, academic_degree, graduation_institution, notes, status
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendente')
-    `).run(
-      full_name.trim(),
-      email.trim(),
-      phone.trim(),
-      identity_card || '',
-      course_id || null,
-      course_title,
-      academic_degree || 'Licenciatura',
-      graduation_institution || '',
-      notes || ''
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pendente')`,
+      [
+        full_name.trim(),
+        email.trim(),
+        phone.trim(),
+        identity_card || '',
+        course_id || null,
+        course_title,
+        academic_degree || 'Licenciatura',
+        graduation_institution || '',
+        notes || ''
+      ]
     );
 
     res.json({
@@ -673,33 +662,77 @@ router.post('/api/public/applications', (req: Request, res: Response) => {
   }
 });
 
+// Public Contact message
+router.post('/api/public/contact', async (req: Request, res: Response) => {
+  try {
+    const { name, email, phone, subject, message } = req.body;
+    if (!name || !email || !subject || !message) {
+      res.status(400).json({ error: 'Preencha todos os campos obrigatórios.' });
+      return;
+    }
+    const result = await db.run(
+      `INSERT INTO contact_messages (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)`,
+      [name.trim(), email.trim(), phone || '', subject.trim(), message.trim()]
+    );
+    res.json({
+      success: true,
+      id: result.lastInsertRowid,
+      message: 'Mensagem enviada com sucesso! Responderemos o mais brevemente possível.'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Public Newsletter
+router.post('/api/public/newsletter', async (req: Request, res: Response) => {
+  try {
+    const { email, full_name } = req.body;
+    if (!email) {
+      res.status(400).json({ error: 'Email é obrigatório.' });
+      return;
+    }
+    await db.run(
+      `INSERT INTO newsletter_subscribers (email, full_name) VALUES (?, ?)`,
+      [email.trim().toLowerCase(), full_name || '']
+    );
+    res.json({ success: true, message: 'Subscrição da newsletter efectuada com sucesso!' });
+  } catch (error: any) {
+    if (error.message && error.message.includes('UNIQUE')) {
+      res.json({ success: true, message: 'O seu e-mail já se encontra subscrito na nossa newsletter.' });
+      return;
+    }
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==========================================
-// 3. ADMIN CMS ROUTES (PROTECTED)
+// 3. ADMIN CMS ROUTES
 // ==========================================
 
 // Dashboard Stats & Analytics
-router.get('/api/admin/stats', authMiddleware, (req: AuthRequest, res: Response) => {
+router.get('/api/admin/stats', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const totalCourses = db.prepare('SELECT COUNT(*) as c FROM courses').get() as any;
-    const totalNews = db.prepare('SELECT COUNT(*) as c FROM news').get() as any;
-    const totalEvents = db.prepare('SELECT COUNT(*) as c FROM events').get() as any;
-    const totalPublications = db.prepare('SELECT COUNT(*) as c FROM publications').get() as any;
-    const totalApplications = db.prepare('SELECT COUNT(*) as c FROM applications').get() as any;
-    const pendingApplications = db.prepare("SELECT COUNT(*) as c FROM applications WHERE status = 'Pendente'").get() as any;
-    const totalUsers = db.prepare('SELECT COUNT(*) as c FROM users').get() as any;
+    const totalCourses = await db.get('SELECT COUNT(*) as c FROM courses');
+    const totalNews = await db.get('SELECT COUNT(*) as c FROM news');
+    const totalEvents = await db.get('SELECT COUNT(*) as c FROM events');
+    const totalPublications = await db.get('SELECT COUNT(*) as c FROM publications');
+    const totalApplications = await db.get('SELECT COUNT(*) as c FROM applications');
+    const pendingApplications = await db.get("SELECT COUNT(*) as c FROM applications WHERE status = 'Pendente'");
+    const totalUsers = await db.get('SELECT COUNT(*) as c FROM users');
 
-    const recentApplications = db.prepare('SELECT * FROM applications ORDER BY created_at DESC LIMIT 5').all();
-    const recentNews = db.prepare('SELECT id, title, published_at, views, is_published FROM news ORDER BY created_at DESC LIMIT 5').all();
+    const recentApplications = await db.all('SELECT * FROM applications ORDER BY created_at DESC LIMIT 5');
+    const recentNews = await db.all('SELECT id, title, published_at, views, is_published FROM news ORDER BY created_at DESC LIMIT 5');
 
     res.json({
       stats: {
-        courses: totalCourses.c,
-        news: totalNews.c,
-        events: totalEvents.c,
-        publications: totalPublications.c,
-        applications: totalApplications.c,
-        pendingApplications: pendingApplications.c,
-        users: totalUsers.c,
+        courses: totalCourses?.c || 0,
+        news: totalNews?.c || 0,
+        events: totalEvents?.c || 0,
+        publications: totalPublications?.c || 0,
+        applications: totalApplications?.c || 0,
+        pendingApplications: pendingApplications?.c || 0,
+        users: totalUsers?.c || 0,
       },
       recentApplications,
       recentNews,
@@ -710,28 +743,28 @@ router.get('/api/admin/stats', authMiddleware, (req: AuthRequest, res: Response)
 });
 
 // Site Settings (GET, PUT)
-router.get('/api/admin/settings', authMiddleware, (req: AuthRequest, res: Response) => {
-  const rows = db.prepare('SELECT key, value FROM site_settings').all() as { key: string; value: string }[];
-  const settings: Record<string, string> = {};
-  rows.forEach((r) => (settings[r.key] = r.value));
-  res.json(settings);
+router.get('/api/admin/settings', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const rows = await db.all('SELECT key, value FROM site_settings');
+    const settings: Record<string, string> = {};
+    rows.forEach((r: any) => (settings[r.key] = r.value));
+    res.json(settings);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/settings', authMiddleware, (req: AuthRequest, res: Response) => {
+router.put('/api/admin/settings', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
     const settings = req.body;
-    const updateStmt = db.prepare(`
-      INSERT INTO site_settings (key, value) VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `);
-
-    const updateMany = db.transaction((entries: [string, any][]) => {
-      for (const [key, value] of entries) {
-        updateStmt.run(key, String(value));
+    for (const [key, value] of Object.entries(settings)) {
+      const existing = await db.get('SELECT key FROM site_settings WHERE key = ?', [key]);
+      if (existing) {
+        await db.run('UPDATE site_settings SET value = ? WHERE key = ?', [String(value), key]);
+      } else {
+        await db.run('INSERT INTO site_settings (key, value) VALUES (?, ?)', [key, String(value)]);
       }
-    });
-
-    updateMany(Object.entries(settings));
+    }
     res.json({ success: true, message: 'Definições do portal actualizadas com sucesso!' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -739,222 +772,351 @@ router.put('/api/admin/settings', authMiddleware, (req: AuthRequest, res: Respon
 });
 
 // Hero Slides CRUD
-router.get('/api/admin/hero', authMiddleware, (req: AuthRequest, res: Response) => {
-  const slides = db.prepare('SELECT * FROM hero_slides ORDER BY order_index ASC, id ASC').all();
-  res.json(slides);
+router.get('/api/admin/hero', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const slides = await db.all('SELECT * FROM hero_slides ORDER BY order_index ASC, id ASC');
+    res.json(slides);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/api/admin/hero', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active } = req.body;
-  const result = db.prepare(`
-    INSERT INTO hero_slides (badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index || 0, is_active ?? 1);
-  res.json({ success: true, id: result.lastInsertRowid, message: 'Slide adicionado com sucesso!' });
+router.post('/api/admin/hero', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active } = req.body;
+    const result = await db.run(
+      `INSERT INTO hero_slides (badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index || 0, is_active ?? 1]
+    );
+    res.json({ success: true, id: result.lastInsertRowid, message: 'Slide adicionado com sucesso!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/hero/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active } = req.body;
-  db.prepare(`
-    UPDATE hero_slides SET
-      badge = ?, title = ?, subtitle = ?, image_url = ?, primary_btn_text = ?, 
-      primary_btn_link = ?, secondary_btn_text = ?, secondary_btn_link = ?, 
-      order_index = ?, is_active = ?
-    WHERE id = ?
-  `).run(badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active, req.params.id);
-  res.json({ success: true, message: 'Slide actualizado!' });
+router.put('/api/admin/hero/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active } = req.body;
+    await db.run(
+      `UPDATE hero_slides SET
+        badge = ?, title = ?, subtitle = ?, image_url = ?, primary_btn_text = ?, 
+        primary_btn_link = ?, secondary_btn_text = ?, secondary_btn_link = ?, 
+        order_index = ?, is_active = ?
+      WHERE id = ?`,
+      [badge, title, subtitle, image_url, primary_btn_text, primary_btn_link, secondary_btn_text, secondary_btn_link, order_index, is_active, req.params.id]
+    );
+    res.json({ success: true, message: 'Slide actualizado!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/hero/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM hero_slides WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Slide eliminado!' });
+router.delete('/api/admin/hero/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM hero_slides WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Slide eliminado!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Courses CRUD
-router.get('/api/admin/courses', authMiddleware, (req: AuthRequest, res: Response) => {
-  const courses = db.prepare('SELECT * FROM courses ORDER BY id DESC').all();
-  res.json(courses);
+router.get('/api/admin/courses', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const courses = await db.all('SELECT * FROM courses ORDER BY id DESC');
+    res.json(courses);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/api/admin/courses', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured, is_active } = req.body;
-  const courseSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  
-  const result = db.prepare(`
-    INSERT INTO courses (title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, courseSlug, category, degree || '', duration || '', modality || 'Presencial', description || '', syllabus || '', requirements || '', vacancies || 30, image_url || '', featured ? 1 : 0, is_active ?? 1);
-  res.json({ success: true, id: result.lastInsertRowid, message: 'Curso criado com sucesso!' });
+router.post('/api/admin/courses', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured, is_active } = req.body;
+    const courseSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    
+    const result = await db.run(
+      `INSERT INTO courses (title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, courseSlug, category, degree || '', duration || '', modality || 'Presencial', description || '', syllabus || '', requirements || '', vacancies || 30, image_url || '', featured ? 1 : 0, is_active ?? 1]
+    );
+    res.json({ success: true, id: result.lastInsertRowid, message: 'Curso criado com sucesso!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/courses/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured, is_active } = req.body;
-  db.prepare(`
-    UPDATE courses SET
-      title = ?, slug = ?, category = ?, degree = ?, duration = ?, modality = ?,
-      description = ?, syllabus = ?, requirements = ?, vacancies = ?, image_url = ?, featured = ?, is_active = ?
-    WHERE id = ?
-  `).run(title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured ? 1 : 0, is_active ? 1 : 0, req.params.id);
-  res.json({ success: true, message: 'Curso actualizado com sucesso!' });
+router.put('/api/admin/courses/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured, is_active } = req.body;
+    await db.run(
+      `UPDATE courses SET
+        title = ?, slug = ?, category = ?, degree = ?, duration = ?, modality = ?,
+        description = ?, syllabus = ?, requirements = ?, vacancies = ?, image_url = ?, featured = ?, is_active = ?
+      WHERE id = ?`,
+      [title, slug, category, degree, duration, modality, description, syllabus, requirements, vacancies, image_url, featured ? 1 : 0, is_active ? 1 : 0, req.params.id]
+    );
+    res.json({ success: true, message: 'Curso actualizado com sucesso!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/courses/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM courses WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Curso removido!' });
+router.delete('/api/admin/courses/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM courses WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Curso removido!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // News CRUD
-router.get('/api/admin/news', authMiddleware, (req: AuthRequest, res: Response) => {
-  const articles = db.prepare('SELECT * FROM news ORDER BY id DESC').all();
-  res.json(articles);
+router.get('/api/admin/news', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const articles = await db.all('SELECT * FROM news ORDER BY id DESC');
+    res.json(articles);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/api/admin/news', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, slug, category, excerpt, content, image_url, published_at, author, is_published } = req.body;
-  const newsSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  
-  const result = db.prepare(`
-    INSERT INTO news (title, slug, category, excerpt, content, image_url, published_at, author, is_published)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, newsSlug, category || 'Notícias', excerpt || '', content || '', image_url || '', published_at || new Date().toISOString().split('T')[0], author || 'Redacção ACITE', is_published ?? 1);
-  res.json({ success: true, id: result.lastInsertRowid, message: 'Notícia publicada com sucesso!' });
+router.post('/api/admin/news', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, slug, category, excerpt, content, image_url, published_at, author, is_published } = req.body;
+    const newsSlug = slug || title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    
+    const result = await db.run(
+      `INSERT INTO news (title, slug, category, excerpt, content, image_url, published_at, author, is_published)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, newsSlug, category || 'Notícias', excerpt || '', content || '', image_url || '', published_at || new Date().toISOString().split('T')[0], author || 'Redacção ACITE', is_published ?? 1]
+    );
+    res.json({ success: true, id: result.lastInsertRowid, message: 'Notícia publicada com sucesso!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/news/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, slug, category, excerpt, content, image_url, published_at, author, is_published } = req.body;
-  db.prepare(`
-    UPDATE news SET
-      title = ?, slug = ?, category = ?, excerpt = ?, content = ?, image_url = ?, published_at = ?, author = ?, is_published = ?
-    WHERE id = ?
-  `).run(title, slug, category, excerpt, content, image_url, published_at, author, is_published ? 1 : 0, req.params.id);
-  res.json({ success: true, message: 'Notícia actualizada!' });
+router.put('/api/admin/news/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, slug, category, excerpt, content, image_url, published_at, author, is_published } = req.body;
+    await db.run(
+      `UPDATE news SET
+        title = ?, slug = ?, category = ?, excerpt = ?, content = ?, image_url = ?, published_at = ?, author = ?, is_published = ?
+      WHERE id = ?`,
+      [title, slug, category, excerpt, content, image_url, published_at, author, is_published ? 1 : 0, req.params.id]
+    );
+    res.json({ success: true, message: 'Notícia actualizada!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/news/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM news WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Notícia removida!' });
+router.delete('/api/admin/news/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM news WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Notícia removida!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Events CRUD
-router.get('/api/admin/events', authMiddleware, (req: AuthRequest, res: Response) => {
-  const events = db.prepare('SELECT * FROM events ORDER BY event_date DESC').all();
-  res.json(events);
+router.get('/api/admin/events', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const events = await db.all('SELECT * FROM events ORDER BY event_date DESC');
+    res.json(events);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/api/admin/events', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, event_date, event_time, location, description, category, registration_url, image_url, is_active } = req.body;
-  const result = db.prepare(`
-    INSERT INTO events (title, event_date, event_time, location, description, category, registration_url, image_url, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, event_date, event_time || '', location || '', description || '', category || 'Evento', registration_url || '', image_url || '', is_active ?? 1);
-  res.json({ success: true, id: result.lastInsertRowid, message: 'Evento registado com sucesso!' });
+router.post('/api/admin/events', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, event_date, event_time, location, description, category, registration_url, image_url, is_active } = req.body;
+    const result = await db.run(
+      `INSERT INTO events (title, event_date, event_time, location, description, category, registration_url, image_url, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, event_date, event_time || '', location || '', description || '', category || 'Evento', registration_url || '', image_url || '', is_active ?? 1]
+    );
+    res.json({ success: true, id: result.lastInsertRowid, message: 'Evento registado com sucesso!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/events/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, event_date, event_time, location, description, category, registration_url, image_url, is_active } = req.body;
-  db.prepare(`
-    UPDATE events SET
-      title = ?, event_date = ?, event_time = ?, location = ?, description = ?, category = ?, registration_url = ?, image_url = ?, is_active = ?
-    WHERE id = ?
-  `).run(title, event_date, event_time, location, description, category, registration_url, image_url, is_active ? 1 : 0, req.params.id);
-  res.json({ success: true, message: 'Evento actualizado!' });
+router.put('/api/admin/events/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, event_date, event_time, location, description, category, registration_url, image_url, is_active } = req.body;
+    await db.run(
+      `UPDATE events SET
+        title = ?, event_date = ?, event_time = ?, location = ?, description = ?, category = ?, registration_url = ?, image_url = ?, is_active = ?
+      WHERE id = ?`,
+      [title, event_date, event_time, location, description, category, registration_url, image_url, is_active ? 1 : 0, req.params.id]
+    );
+    res.json({ success: true, message: 'Evento actualizado!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/events/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM events WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Evento removido!' });
+router.delete('/api/admin/events/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM events WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Evento removido!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Publications CRUD
-router.get('/api/admin/publications', authMiddleware, (req: AuthRequest, res: Response) => {
-  const pubs = db.prepare('SELECT * FROM publications ORDER BY year DESC, id DESC').all();
-  res.json(pubs);
+router.get('/api/admin/publications', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const pubs = await db.all('SELECT * FROM publications ORDER BY year DESC, id DESC');
+    res.json(pubs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/api/admin/publications', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, authors, year, publication_type, abstract, download_url, cover_url, isbn } = req.body;
-  const result = db.prepare(`
-    INSERT INTO publications (title, authors, year, publication_type, abstract, download_url, cover_url, isbn)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(title, authors, year || new Date().getFullYear(), publication_type || 'Livro', abstract || '', download_url || '', cover_url || '', isbn || '');
-  res.json({ success: true, id: result.lastInsertRowid, message: 'Publicação adicionada!' });
+router.post('/api/admin/publications', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, authors, year, publication_type, abstract, download_url, cover_url, isbn } = req.body;
+    const result = await db.run(
+      `INSERT INTO publications (title, authors, year, publication_type, abstract, download_url, cover_url, isbn)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, authors, year || new Date().getFullYear(), publication_type || 'Livro', abstract || '', download_url || '', cover_url || '', isbn || '']
+    );
+    res.json({ success: true, id: result.lastInsertRowid, message: 'Publicação adicionada!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/publications/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, authors, year, publication_type, abstract, download_url, cover_url, isbn } = req.body;
-  db.prepare(`
-    UPDATE publications SET
-      title = ?, authors = ?, year = ?, publication_type = ?, abstract = ?, download_url = ?, cover_url = ?, isbn = ?
-    WHERE id = ?
-  `).run(title, authors, year, publication_type, abstract, download_url, cover_url, isbn, req.params.id);
-  res.json({ success: true, message: 'Publicação actualizada!' });
+router.put('/api/admin/publications/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, authors, year, publication_type, abstract, download_url, cover_url, isbn } = req.body;
+    await db.run(
+      `UPDATE publications SET
+        title = ?, authors = ?, year = ?, publication_type = ?, abstract = ?, download_url = ?, cover_url = ?, isbn = ?
+      WHERE id = ?`,
+      [title, authors, year, publication_type, abstract, download_url, cover_url, isbn, req.params.id]
+    );
+    res.json({ success: true, message: 'Publicação actualizada!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/publications/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM publications WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Publicação removida!' });
+router.delete('/api/admin/publications/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM publications WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Publicação removida!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Features (Why Choose ACITE) CRUD
-router.get('/api/admin/features', authMiddleware, (req: AuthRequest, res: Response) => {
-  const features = db.prepare('SELECT * FROM features ORDER BY order_index ASC').all();
-  res.json(features);
+// Features CRUD
+router.get('/api/admin/features', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const features = await db.all('SELECT * FROM features ORDER BY order_index ASC');
+    res.json(features);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/api/admin/features', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { step_number, title, description, order_index } = req.body;
-  const result = db.prepare(`
-    INSERT INTO features (step_number, title, description, order_index)
-    VALUES (?, ?, ?, ?)
-  `).run(step_number || '01', title, description, order_index || 0);
-  res.json({ success: true, id: result.lastInsertRowid, message: 'Item adicionado!' });
+router.post('/api/admin/features', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { step_number, title, description, order_index } = req.body;
+    const result = await db.run(
+      `INSERT INTO features (step_number, title, description, order_index) VALUES (?, ?, ?, ?)`,
+      [step_number || '01', title, description, order_index || 0]
+    );
+    res.json({ success: true, id: result.lastInsertRowid, message: 'Item adicionado!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/features/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { step_number, title, description, order_index } = req.body;
-  db.prepare(`
-    UPDATE features SET step_number = ?, title = ?, description = ?, order_index = ? WHERE id = ?
-  `).run(step_number, title, description, order_index, req.params.id);
-  res.json({ success: true, message: 'Item actualizado!' });
+router.put('/api/admin/features/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { step_number, title, description, order_index } = req.body;
+    await db.run(
+      `UPDATE features SET step_number = ?, title = ?, description = ?, order_index = ? WHERE id = ?`,
+      [step_number, title, description, order_index, req.params.id]
+    );
+    res.json({ success: true, message: 'Item actualizado!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/features/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM features WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Item removido!' });
+router.delete('/api/admin/features/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM features WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Item removido!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Candidate Applications / Inscrições Management
-router.get('/api/admin/applications', authMiddleware, (req: AuthRequest, res: Response) => {
-  const applications = db.prepare('SELECT * FROM applications ORDER BY created_at DESC').all();
-  res.json(applications);
+// Candidate Applications Management
+router.get('/api/admin/applications', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const applications = await db.all('SELECT * FROM applications ORDER BY created_at DESC');
+    res.json(applications);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/applications/:id/status', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { status } = req.body;
-  db.prepare('UPDATE applications SET status = ? WHERE id = ?').run(status, req.params.id);
-  res.json({ success: true, message: `Estado da candidatura alterado para ${status}` });
+router.put('/api/admin/applications/:id/status', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status } = req.body;
+    await db.run('UPDATE applications SET status = ? WHERE id = ?', [status, req.params.id]);
+    res.json({ success: true, message: `Estado da candidatura alterado para ${status}` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/api/admin/applications/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  db.prepare('DELETE FROM applications WHERE id = ?').run(req.params.id);
-  res.json({ success: true, message: 'Candidatura eliminada.' });
+router.delete('/api/admin/applications/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.run('DELETE FROM applications WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Candidatura eliminada.' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Institutional Pages (Sobre, Missão, etc.)
-router.get('/api/admin/pages', authMiddleware, (req: AuthRequest, res: Response) => {
-  const pages = db.prepare('SELECT * FROM pages ORDER BY id ASC').all();
-  res.json(pages);
+// Institutional Pages
+router.get('/api/admin/pages', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const pages = await db.all('SELECT * FROM pages ORDER BY id ASC');
+    res.json(pages);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/api/admin/pages/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const { title, content, meta_description } = req.body;
-  db.prepare('UPDATE pages SET title = ?, content = ?, meta_description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-    .run(title, content, meta_description || '', req.params.id);
-  res.json({ success: true, message: 'Página actualizada!' });
+router.put('/api/admin/pages/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title, content, meta_description } = req.body;
+    await db.run(
+      'UPDATE pages SET title = ?, content = ?, meta_description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [title, content, meta_description || '', req.params.id]
+    );
+    res.json({ success: true, message: 'Página actualizada!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Media Library & File Uploads
-router.post('/api/admin/upload', authMiddleware, upload.single('file'), (req: AuthRequest, res: Response) => {
+// Media Library
+router.post('/api/admin/upload', authMiddleware, upload.single('file'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.file) {
       res.status(400).json({ error: 'Nenhum ficheiro enviado.' });
@@ -962,10 +1124,10 @@ router.post('/api/admin/upload', authMiddleware, upload.single('file'), (req: Au
     }
 
     const fileUrl = `/uploads/${req.file.filename}`;
-    const result = db.prepare(`
-      INSERT INTO media_library (filename, original_name, url, mimetype, size)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(req.file.filename, req.file.originalname, fileUrl, req.file.mimetype, req.file.size);
+    const result = await db.run(
+      `INSERT INTO media_library (filename, original_name, url, mimetype, size) VALUES (?, ?, ?, ?, ?)`,
+      [req.file.filename, req.file.originalname, fileUrl, req.file.mimetype, req.file.size]
+    );
 
     res.json({
       success: true,
@@ -980,118 +1142,41 @@ router.post('/api/admin/upload', authMiddleware, upload.single('file'), (req: Au
   }
 });
 
-router.get('/api/admin/media', authMiddleware, (req: AuthRequest, res: Response) => {
-  const media = db.prepare('SELECT * FROM media_library ORDER BY created_at DESC').all();
-  res.json(media);
-});
-
-router.delete('/api/admin/media/:id', authMiddleware, (req: AuthRequest, res: Response) => {
-  const fileRecord = db.prepare('SELECT * FROM media_library WHERE id = ?').get(req.params.id) as any;
-  if (fileRecord) {
-    const filePath = path.join(process.cwd(), 'uploads', fileRecord.filename);
-    if (fs.existsSync(filePath)) {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (e) {}
-    }
-    db.prepare('DELETE FROM media_library WHERE id = ?').run(req.params.id);
-  }
-  res.json({ success: true, message: 'Ficheiro eliminado!' });
-});
-
-// ==========================================
-// 12. DATABASE AUTO-UPDATE & SYSTEM DIAGNOSTICS
-// ==========================================
-
-// Get database status, migrations history, tables stats, and integrity
-router.get('/api/admin/database/status', authMiddleware, (req: AuthRequest, res: Response) => {
+router.get('/api/admin/media', authMiddleware, async (req: AuthRequest, res: Response) => {
   try {
-    const diagnostics = getDatabaseDiagnostics(db, dbPath);
+    const media = await db.all('SELECT * FROM media_library ORDER BY created_at DESC');
+    res.json(media);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/api/admin/media/:id', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const fileRecord = await db.get('SELECT * FROM media_library WHERE id = ?', [req.params.id]);
+    if (fileRecord) {
+      try {
+        const filePath = path.join(process.cwd(), 'uploads', fileRecord.filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch {}
+      await db.run('DELETE FROM media_library WHERE id = ?', [req.params.id]);
+    }
+    res.json({ success: true, message: 'Ficheiro eliminado!' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Database Diagnostics
+router.get('/api/admin/database/status', authMiddleware, async (req: AuthRequest, res: Response) => {
+  try {
+    const diagnostics = await getDatabaseDiagnostics();
     res.json(diagnostics);
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Erro ao obter diagnóstico da base de dados.' });
   }
 });
 
-// Trigger database auto-update / run pending migrations
-router.post('/api/admin/database/migrate', authMiddleware, (req: AuthRequest, res: Response) => {
-  try {
-    const result = runAutoMigrations(db);
-    const diagnostics = getDatabaseDiagnostics(db, dbPath);
-    res.json({
-      success: true,
-      message: result.executed > 0
-        ? `Base de dados actualizada com sucesso! ${result.executed} migrações aplicadas (Versão v${result.currentVersion}).`
-        : `A base de dados já se encontra actualizada na versão mais recente (v${result.currentVersion}).`,
-      result,
-      diagnostics,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Erro ao executar migrações na base de dados.' });
-  }
-});
-
-// Optimize database (VACUUM and PRAGMA optimize)
-router.post('/api/admin/database/optimize', authMiddleware, (req: AuthRequest, res: Response) => {
-  try {
-    db.pragma('wal_checkpoint(TRUNCATE)');
-    db.exec('VACUUM;');
-    db.pragma('optimize');
-    const diagnostics = getDatabaseDiagnostics(db, dbPath);
-    res.json({
-      success: true,
-      message: 'Base de dados optimizada com sucesso (VACUUM e checkpoint executados).',
-      diagnostics,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Erro ao optimizar base de dados.' });
-  }
-});
-
-// Download database backup file (.db)
-router.get('/api/admin/database/backup', authMiddleware, (req: AuthRequest, res: Response) => {
-  try {
-    // Flush WAL to disk first
-    db.pragma('wal_checkpoint(FULL)');
-    
-    if (!fs.existsSync(dbPath)) {
-      res.status(404).json({ error: 'Ficheiro da base de dados não encontrado.' });
-      return;
-    }
-
-    const dateStr = new Date().toISOString().slice(0, 10);
-    const backupFileName = `acite_database_backup_${dateStr}.db`;
-    
-    res.setHeader('Content-Disposition', `attachment; filename="${backupFileName}"`);
-    res.setHeader('Content-Type', 'application/x-sqlite3');
-    
-    const fileStream = fs.createReadStream(dbPath);
-    fileStream.pipe(res);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message || 'Erro ao descarregar cópia de segurança.' });
-  }
-});
-
-// Execute custom schema adjustment / new feature table safely
-router.post('/api/admin/database/custom-schema', authMiddleware, (req: AuthRequest, res: Response) => {
-  try {
-    const { sql } = req.body;
-    if (!sql || typeof sql !== 'string') {
-      res.status(400).json({ error: 'Instrução SQL obrigatória.' });
-      return;
-    }
-
-    const result = executeCustomSchemaUpdate(db, sql);
-    const diagnostics = getDatabaseDiagnostics(db, dbPath);
-    res.json({
-      success: true,
-      message: result.message,
-      diagnostics,
-    });
-  } catch (err: any) {
-    res.status(400).json({ error: err.message || 'Erro de sintaxe ou execução SQL.' });
-  }
-});
-
 export default router;
-
